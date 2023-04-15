@@ -7,13 +7,17 @@
 #include <errno.h>
 
 // DOCUMENTATION
-// This program acts as a client to relay messages between two clients
+// This program acts as a client which connects to a server
+// to talk with another client
 // It uses the TCP protocol
 // It takes two arguments, the server ip and the server port
-// If at some point one of the clients send "fin",
+// If at some point one of the clients sends "fin",
 // the server will close the discussion between the clients
 // and wait for a new one.
-// The third argument is 0 if the client is a reader, 1 if it is a writer
+
+// IMPORTANT:
+// The third argument is 1 if the client is a writer, 2 if it is a reader
+// MAKE SURE THE WRITER CONNECTS FIRST
 
 // You can use gcc to compile this program:
 // gcc -o client client.c
@@ -28,7 +32,8 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Début programme\n");
+    printf("Debut programme client\n");
+    printf("Bienvenue sur la messagerie instantanee !\n");
 
     int dS = socket(PF_INET, SOCK_STREAM, 0);
     if (dS == -1) {
@@ -74,10 +79,10 @@ int main(int argc, char *argv[]) {
 
     printf("Socket Connecté\n");
 
-    int readOrWrite = atoi(argv[3]); // 0 if reader, 1 if writer
+    int readOrWrite = atoi(argv[3]) - 1; // 0 = write, 1 = read
     int max_length = 50;
     char msg [max_length];
-    char input[max_length+1]; // +1 for null terminator
+    char input[max_length]; 
     int nb_recv;
     int nb_send;
 
@@ -87,8 +92,8 @@ int main(int argc, char *argv[]) {
 
             // Ask for message
             // fgets() reads a line from stdin and stores it into the string pointed to by input
-            printf("Entrez un message (max %d characters): ", max_length);
-            fgets(input, max_length+1, stdin); // +1 for null terminator
+            printf("Entrez un message (max %d caracteres): ", max_length - 1);
+            fgets(input, max_length, stdin); 
             char *pos = strchr(input, '\n');
             *pos = '\0';
             
@@ -97,6 +102,7 @@ int main(int argc, char *argv[]) {
             nb_send = send(dS, input, max_length, 0);
             if (nb_send == -1) {
                 perror("Erreur lors de l'envoi du message");
+                close(dS);
                 exit(EXIT_FAILURE);
             } else if (nb_send == 0) {
                 // Connection closed by remote host
@@ -120,6 +126,7 @@ int main(int argc, char *argv[]) {
             nb_recv = recv(dS, msg, max_length, 0);
             if (nb_recv == -1) {
                 perror("Erreur lors de la reception du message");
+                close(dS);
                 exit(EXIT_FAILURE);
             } else if (nb_recv == 0) {
                 // Connection closed by remote host
@@ -149,5 +156,5 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    return 1;
+    return EXIT_SUCCESS;
 }

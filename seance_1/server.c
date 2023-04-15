@@ -75,6 +75,7 @@ int main(int argc, char *argv[]) {
 while (1){
   
   // Acceptation de la connexion des deux clients
+  printf("En attente de connexion des clients\n");
 
   struct sockaddr_in adrC_1 ;
   socklen_t lg_1 = sizeof(struct sockaddr_in) ;
