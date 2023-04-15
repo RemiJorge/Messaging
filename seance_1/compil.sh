@@ -1,3 +1,4 @@
 #!/bin/bash
-gcc -o client client.c
-gcc -o server server.c
+mkdir -p bin
+gcc -o bin/client client.c
+gcc -o bin/server server.c
