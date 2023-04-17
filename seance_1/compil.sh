@@ -1,4 +1,4 @@
 #!/bin/bash
 mkdir -p bin
-gcc -o bin/client client.c
-gcc -o bin/server server.c
+gcc -o bin/client src/client.c
+gcc -o bin/server src/server.c

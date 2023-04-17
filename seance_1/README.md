@@ -27,3 +27,4 @@ Then the client WHO RECEIVES THE MESSAGE.
 MAKE SURE THIRD ARGUMENT IS 2
 
 To end a conversation, type "fin" in the client who sends the message.
+The server will then wait for new clients to connect.
