@@ -13,7 +13,9 @@
 // It takes one argument, the port to use
 // If at some point one of the clients send "fin",
 // the server will close the discussion between the clients
-// and wait for a new one.
+
+// For now, the server can only handle two clients
+// If they both disconnect, the server ends its execution
 
 // You can use gcc to compile this program:
 // gcc -o serv server.c
@@ -54,7 +56,7 @@ void * broadcast(void * dS_client) {
             break;
         }
 
-        printf("Message reçu: %s du client dSC: %d \n", buffer, dSC);
+        printf("Message recu: %s du client dSC: %d \n", buffer, dSC);
 
         // If the client send "fin", we break and close his socket
         if (strcmp(buffer, "fin") == 0) {
@@ -167,7 +169,7 @@ int main(int argc, char *argv[]) {
       perror("Erreur lors de la connexion avec le client");
       exit(EXIT_FAILURE);
     }
-    printf("Client %d connecté\n", i);
+    printf("Client %d connecté\n", i+1);
   }
   
   // IMPORTANT: HERE, both clients need to connect before the communication starts
@@ -196,6 +198,8 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
   }
+
+  printf("Both clients disconnected\n");
 
   // Close the main socket
   if (close(dS)==-1){

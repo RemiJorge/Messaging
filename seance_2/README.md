@@ -3,6 +3,9 @@
 This is a simple messaging server written in C that relays text messages
 between two clients using the TCP protocol. The server and the clients are multi-threaded.
 
+For now, the server can only handle two clients.
+If they both disconnect, the server will stop.
+
 We have improved the graphical interface of the client!
 Please enjoy the new features!
 
@@ -26,4 +29,4 @@ Then the clients
 To disconnect from the server, send the message "fin" to the server.
 
 For now, the server can only handle two clients.
-
+If they both disconnect, the server will stop.
