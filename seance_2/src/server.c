@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 
 // DOCUMENTATION
 // This program acts as a server to relay messages between two clients
@@ -18,6 +19,84 @@
 // gcc -o serv server.c
 
 // Use : ./serv <port>
+
+
+// We define our constants
+#define MAX_CLIENT 2
+#define NB_THREADS 2
+#define BUFFER_SIZE 50
+// We define an array of socket descriptors for the clients
+int tab_client[MAX_CLIENT];  
+
+
+// A function for a thread that will take as an argument
+// the socket descriptor of the client, and will receive messages
+// from the client and send them to the other clients connected
+
+void * broadcast(void * dS_client) {
+
+    int dSC = *(int *)dS_client;
+    char buffer[BUFFER_SIZE];
+    int nb_recv;
+    int nb_send;
+    int i;
+
+    while (1) {
+
+        // We receive the message from the client
+        nb_recv = recv(dSC, buffer, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception");
+            exit(EXIT_FAILURE);
+        }
+        if (nb_recv == 0) {
+            printf("Client déconnecté\n");
+            break;
+        }
+
+        printf("Message reçu: %s du client dSC: %d \n", buffer, dSC);
+
+        // If the client send "fin", we break and close his socket
+        if (strcmp(buffer, "fin") == 0) {
+            printf("Fin de la discussion pour client dSC: %d\n", dSC);
+            break;
+        }
+
+        // We have to send the message to the other clients,
+        // their socket descriptors are in the array tab_client
+        i = 0;
+        while( i < MAX_CLIENT && tab_client[i] != 0){
+            // We can't send the message to ourselves
+            if (tab_client[i] != dSC) {
+                nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
+                if (nb_send == -1) {
+                    perror("Erreur lors de l'envoi");
+                    exit(EXIT_FAILURE);
+                }
+                if (nb_send == 0) {
+                    printf("Le client dSC: %d s'est deconnecte\n", tab_client[i]);
+                    // Ici, je choisi de ne pas break, 
+                    // car je veux quand même envoyer le message aux autres clients
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // We close the socket of the client who wanted to disconnect
+    if (close(dSC) == -1) {
+        perror("Erreur lors de la fermeture du descripteur de fichier");
+        exit(EXIT_FAILURE);
+    }
+
+    // We put 0 in the tab_client array
+    *(int *)dS_client = 0;
+
+    pthread_exit(0);
+}
+
+
+
 
 int main(int argc, char *argv[]) {
 
@@ -71,143 +150,58 @@ int main(int argc, char *argv[]) {
   }
   printf("Mode écoute\n");
 
+  // We put zeros in the array to show that the clients are not connected
+  memset(tab_client, 0, sizeof(tab_client));
 
-while (1){
-  
+  // Just in case we want to know the address of the clients
+  struct sockaddr_in tab_adr[MAX_CLIENT];
+  socklen_t tab_lg[MAX_CLIENT];
+
   // Acceptation de la connexion des deux clients
   printf("En attente de connexion des clients\n");
 
-  struct sockaddr_in adrC_1 ;
-  socklen_t lg_1 = sizeof(struct sockaddr_in) ;
-  int dSC_1 = accept(dS, (struct sockaddr*) &adrC_1,&lg_1) ;
-  if(dSC_1 == -1) {
-    perror("Erreur lors de la connexion avec le client");
-    exit(EXIT_FAILURE);
-  }
-  printf("Client 1 connecté\n");
-
-  struct sockaddr_in adrC_2 ;
-  socklen_t lg_2 = sizeof(struct sockaddr_in) ;
-  int dSC_2 = accept(dS, (struct sockaddr*) &adrC_2,&lg_2) ;
-  if(dSC_2 == -1) {
-    perror("Erreur lors de la connexion avec le client");
-    exit(EXIT_FAILURE);
-  }
-  printf("Client 2 connecté\n");
-
-while (1){
-
-  // Communication, ici:
-  // Client 1 : write puis read
-  // Client 2 : read puis write
-
-  char msg [50] ;
-  int nb_recv;
-  int nb_sent;
-
-  // Client 1 envoie un message
-
-  nb_recv = recv(dSC_1, msg, sizeof(msg), 0);
-  if (nb_recv == -1) {
-      perror("Erreur lors de la réception du message");
-      break;
-  } 
-  else if (nb_recv == 0) {
-      // Remote endpoint has closed the connection
-      printf("Connection closed by remote endpoint\n");
-      break;
-  }
-
-  // Data has been received
-  printf("Message reçu : %s\n", msg);
-  printf("Nb octects recus : %d\n", nb_recv);
-
-  // Check if client 1 wants to end the discussion
-
-  if (strcmp(msg, "fin") == 0) {
-    printf("Client 1 met fin a la discussion\n");
-    // On dit au client 2 que le client 1 a fini
-    nb_sent = send(dSC_2, msg, sizeof(msg), 0);
-    if (nb_sent == -1) {
-        perror("Erreur lors de l'envoi du message");
+  for (int i = 0; i < MAX_CLIENT; i++){
+    tab_lg[i] = sizeof(struct sockaddr_in);
+    tab_client[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
+    if(tab_client[i] == -1) {
+      perror("Erreur lors de la connexion avec le client");
+      exit(EXIT_FAILURE);
     }
-    break;
+    printf("Client %d connecté\n", i);
   }
+  
+  // IMPORTANT: HERE, both clients need to connect before the communication starts
+  // It is a choice by us.
 
-  // On envoie le message au client 2
+  pthread_t tid;
+  pthread_t Threads_id [NB_THREADS] ;
 
-  nb_sent = send(dSC_2, msg, sizeof(msg), 0);
-  if (nb_sent == -1) {
-      perror("Erreur lors de l'envoi du message");
-      break;
-  }
-  else if(nb_sent == 0) {
-      // Remote endpoint has closed the connection
-      printf("Connection closed by remote endpoint\n");
-      break;
-  }
-  printf("Message envoyé : %s\n", msg);
-  printf("Nb octects envoyés : %d\n", nb_sent);
-
-  // Client 2 envoie un message
-
-  nb_recv = recv(dSC_2, msg, sizeof(msg), 0);
-  if (nb_recv == -1) {
-      perror("Erreur lors de la réception du message");
-      break;
-  } 
-  else if (nb_recv == 0) {
-      // Remote endpoint has closed the connection
-      printf("Connection closed by remote endpoint\n");
-      break;
-  }
-
-  // Data has been received
-  printf("Message reçu : %s\n", msg);
-  printf("Nb octects recus : %d\n", nb_recv);
-
-  // Check if client 2 wants to end the discussion
-
-  if (strcmp(msg, "fin") == 0) {
-    printf("Client 2 met fin a la discussion\n");
-    // On dit au client 1 que le client 2 a fini
-    nb_sent = send(dSC_1, msg, sizeof(msg), 0);
-    if (nb_sent == -1) {
-      perror("Erreur lors de l'envoi du message");
+  // Communication managed by threads
+  // Each thread will listen to messages from a client and send 
+  // the messages to the rest of the clients (broadcast)
+  for (int i = 0; i < NB_THREADS; i++){
+    if (pthread_create(&tid, NULL, broadcast, (void *) &tab_client[i]) != 0) {
+      perror("Erreur lors de la création du thread");
+      exit(EXIT_FAILURE);
     }
-    break;
+    else{
+      Threads_id[i] = tid;
+    }
   }
 
-  // On envoie le message au client 1
-
-  nb_sent = send(dSC_1, msg, sizeof(msg), 0);
-  if (nb_sent == -1) {
-      perror("Erreur lors de l'envoi du message");
-      break;
+  // We wait for the threads to finish
+  for (int i = 0; i < NB_THREADS; i++){
+    if (pthread_join(Threads_id[i], NULL) != 0) {
+      perror("Erreur lors de l'attente de la fin du thread");
+      exit(EXIT_FAILURE);
+    }
   }
-  else if(nb_sent == 0) {
-      // Remote endpoint has closed the connection
-      printf("Connection closed by remote endpoint\n");
-      break;
-  }
-  printf("Message envoyé : %s\n", msg);
-  printf("Nb octects envoyés : %d\n", nb_sent);
 
-}
-
-  // Fermeture de la discussion entre les deux clients
-
-  if (close(dSC_1) == -1){
-    perror("Erreur de close du socket");
+  // Close the main socket
+  if (close(dS)==-1){
+    perror("Erreur lors de la fermeture du socket de acceptation");
     exit(EXIT_FAILURE);
   }
-
-  if (close(dSC_2) == -1){
-    perror("Erreur de close du socket");
-    exit(EXIT_FAILURE);
-  }
-
-}
 
 // Pour etre en accord avec les conventions de la norme POSIX,
 // le main doit retourner un int
