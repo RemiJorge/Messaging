@@ -24,11 +24,14 @@
 
 
 // We define our constants
-#define MAX_CLIENT 2
+#define MAX_CLIENT 50
 #define NB_THREADS 2
 #define BUFFER_SIZE 50
 // We define an array of socket descriptors for the clients
 int tab_client[MAX_CLIENT];  
+// We define a variable to know where to put the next client
+int* free_spot = tab_client;
+int free_indice = 0;
 
 
 // A function for a thread that will take as an argument
@@ -67,16 +70,18 @@ void * broadcast(void * dS_client) {
         // We have to send the message to the other clients,
         // their socket descriptors are in the array tab_client
         i = 0;
-        while( i < MAX_CLIENT && tab_client[i] != 0){
+        while( i < MAX_CLIENT){
             // We can't send the message to ourselves
-            if (tab_client[i] != dSC) {
+            // also, if a client disconnects, we don't send the message to him
+            if (tab_client[i] != 0 && tab_client[i] != dSC) {
                 nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
                 if (nb_send == -1) {
                     perror("Erreur lors de l'envoi");
                     exit(EXIT_FAILURE);
                 }
+                // Si jamais un client se deconnecte lorsqu'on est entrain d'envoyer un message aux autres clients
                 if (nb_send == 0) {
-                    printf("Le client dSC: %d s'est deconnecte\n", tab_client[i]);
+                    printf("Le client dSC: %d s'est deconnecte,donc le message ne s'est pas envoye a lui\n", tab_client[i]);
                     // Ici, je choisi de ne pas break, 
                     // car je veux quand même envoyer le message aux autres clients
                 }
@@ -93,6 +98,8 @@ void * broadcast(void * dS_client) {
 
     // We put 0 in the tab_client array
     *(int *)dS_client = 0;
+    // We put the adr client in the free_spot variable
+    free_spot = dS_client;
 
     pthread_exit(0);
 }
@@ -158,11 +165,17 @@ int main(int argc, char *argv[]) {
   // Just in case we want to know the address of the clients
   struct sockaddr_in tab_adr[MAX_CLIENT];
   socklen_t tab_lg[MAX_CLIENT];
+  pthread_t tid;
+  pthread_t Threads_id [MAX_CLIENT] ;
 
   // Acceptation de la connexion des deux clients
   printf("En attente de connexion des clients\n");
 
-  for (int i = 0; i < MAX_CLIENT; i++){
+  // We use a variable to know where to put the next client
+  // We continually accept connections from clients
+  while(1){
+    
+    int i = free_indice;
     tab_lg[i] = sizeof(struct sockaddr_in);
     tab_client[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
     if(tab_client[i] == -1) {
@@ -170,18 +183,10 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
     printf("Client %d connecté\n", i+1);
-  }
   
-  // IMPORTANT: HERE, both clients need to connect before the communication starts
-  // It is a choice by us.
-
-  pthread_t tid;
-  pthread_t Threads_id [NB_THREADS] ;
-
-  // Communication managed by threads
-  // Each thread will listen to messages from a client and send 
-  // the messages to the rest of the clients (broadcast)
-  for (int i = 0; i < NB_THREADS; i++){
+    // Communication managed by threads
+    // Each thread will listen to messages from a client and send 
+    // the messages to the rest of the clients (broadcast)
     if (pthread_create(&tid, NULL, broadcast, (void *) &tab_client[i]) != 0) {
       perror("Erreur lors de la création du thread");
       exit(EXIT_FAILURE);
@@ -189,10 +194,21 @@ int main(int argc, char *argv[]) {
     else{
       Threads_id[i] = tid;
     }
-  }
 
+    // We find the first occurence of 0 in the array
+    // If there is no 0, we will be out of the loop
+    int j = 0;
+    while (j < MAX_CLIENT){
+      if (tab_client[j] == 0){
+        free_indice = j;
+        break;
+      }
+      j = j + 1;
+    }
+  
+  }
   // We wait for the threads to finish
-  for (int i = 0; i < NB_THREADS; i++){
+  for (int i = 0; i < MAX_CLIENT; i++){
     if (pthread_join(Threads_id[i], NULL) != 0) {
       perror("Erreur lors de l'attente de la fin du thread");
       exit(EXIT_FAILURE);
