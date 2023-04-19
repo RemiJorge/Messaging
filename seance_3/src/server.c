@@ -16,6 +16,7 @@
 // the server will close the discussion between the clients
 
 // The server can handle multiple clients at the same time
+
 // You can use gcc to compile this program:
 // gcc -o serv server.c
 
@@ -23,7 +24,7 @@
 
 
 // We define our constants
-#define MAX_CLIENT 50
+#define MAX_CLIENT 2
 #define BUFFER_SIZE 50
 // We define an array of socket descriptors for the clients
 int tab_client[MAX_CLIENT];  
@@ -190,7 +191,7 @@ int main(int argc, char *argv[]) {
   memset(tab_client, 0, sizeof(tab_client));
 
   // Initialise the semaphore
-  sem_init(&free_spot, 0, 50);
+  sem_init(&free_spot, 0, MAX_CLIENT);
 
   // Just in case we want to know the address of the clients
   struct sockaddr_in tab_adr[MAX_CLIENT];
@@ -232,6 +233,7 @@ int main(int argc, char *argv[]) {
 
   
   }
+  
   // We wait for the threads to finish
   for (int i = 0; i < MAX_CLIENT; i++){
     if (pthread_join(Threads_id[i], NULL) != 0) {
