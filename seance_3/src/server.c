@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 // DOCUMENTATION
 // This program acts as a server to relay messages between two clients
@@ -14,9 +15,7 @@
 // If at some point one of the clients send "fin",
 // the server will close the discussion between the clients
 
-// For now, the server can only handle two clients
-// If they both disconnect, the server ends its execution
-
+// The server can handle multiple clients at the same time
 // You can use gcc to compile this program:
 // gcc -o serv server.c
 
@@ -25,13 +24,41 @@
 
 // We define our constants
 #define MAX_CLIENT 50
-#define NB_THREADS 2
 #define BUFFER_SIZE 50
 // We define an array of socket descriptors for the clients
 int tab_client[MAX_CLIENT];  
-// We define a variable to know where to put the next client
-int* free_spot = tab_client;
-int free_indice = 0;
+// A semaphore to indicate the number of free spots in the tab_client array
+sem_t free_spot;
+
+
+// A function that will take as an argument the socket descriptor of the client
+// and will return the indice of the client in the tab_client array
+int get_indice(int dSC) {
+    int i = 0;
+    while (i < MAX_CLIENT) {
+        if (tab_client[i] == dSC) {
+            return i;
+        }
+        i = i + 1;
+    }
+    // If the client is not in the array, we return -1
+    // This should never happen
+    return -1;
+}
+
+// A function that will find the indice of the first free spot in the tab_client array
+// and will return it, or -1 if there is no free spot
+int get_free_spot() {
+    int i = 0;
+    while (i < MAX_CLIENT) {
+        if (tab_client[i] == 0) {
+            return i;
+        }
+        i = i + 1;
+    }
+    // If there is no free spot, we return -1
+    return -1;
+}
 
 
 // A function for a thread that will take as an argument
@@ -98,8 +125,8 @@ void * broadcast(void * dS_client) {
 
     // We put 0 in the tab_client array
     *(int *)dS_client = 0;
-    // We put the adr client in the free_spot variable
-    free_spot = dS_client;
+    // We increment the semaphore
+    sem_post(&free_spot);
 
     pthread_exit(0);
 }
@@ -162,6 +189,9 @@ int main(int argc, char *argv[]) {
   // We put zeros in the array to show that the clients are not connected
   memset(tab_client, 0, sizeof(tab_client));
 
+  // Initialise the semaphore
+  sem_init(&free_spot, 0, 50);
+
   // Just in case we want to know the address of the clients
   struct sockaddr_in tab_adr[MAX_CLIENT];
   socklen_t tab_lg[MAX_CLIENT];
@@ -175,7 +205,12 @@ int main(int argc, char *argv[]) {
   // We continually accept connections from clients
   while(1){
     
-    int i = free_indice;
+    // We decrement the semaphore
+    sem_wait(&free_spot);
+
+    // We get the first free spot in the array
+    int i = get_free_spot();
+
     tab_lg[i] = sizeof(struct sockaddr_in);
     tab_client[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
     if(tab_client[i] == -1) {
@@ -195,16 +230,6 @@ int main(int argc, char *argv[]) {
       Threads_id[i] = tid;
     }
 
-    // We find the first occurence of 0 in the array
-    // If there is no 0, we will be out of the loop
-    int j = 0;
-    while (j < MAX_CLIENT){
-      if (tab_client[j] == 0){
-        free_indice = j;
-        break;
-      }
-      j = j + 1;
-    }
   
   }
   // We wait for the threads to finish
