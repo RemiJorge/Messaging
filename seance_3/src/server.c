@@ -24,7 +24,7 @@
 
 
 // We define our constants
-#define MAX_CLIENT 2
+#define MAX_CLIENT 10
 #define BUFFER_SIZE 250
 // We define an array of socket descriptors for the clients
 int tab_client[MAX_CLIENT];  

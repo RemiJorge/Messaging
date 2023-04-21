@@ -26,11 +26,14 @@
 
 // Use : ./client <server_ip> <server_port>
 #define buffer_size 250
-#define max_length 38
+#define max_length 201
 #define pseudo_length 10
+char *array_color [7] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[37m"};
 char msg [buffer_size];
 char input[max_length];
 char pseudo[pseudo_length];
+char *color;
+
 
 
 void *afficher(int color, char *msg, void *args){
@@ -109,17 +112,17 @@ void *writeMessage(void *arg) {
 
 
 
+        strcpy(msg_pseudo, color);
+        strcat(msg_pseudo, pseudo);
+        
         if (strcmp(input, "fin") == 0) {
-            // envoie "pseudo" est parti
-            strcpy(msg_pseudo, pseudo);
             strcat(msg_pseudo, " est parti");
         }
         else{
-            // Concatenate pseudo and message
-            strcpy(msg_pseudo, pseudo);
             strcat(msg_pseudo, ": ");
             strcat(msg_pseudo, input);
         }
+        strcat(msg, "\033[0m");
 
         afficher(32, "%s\n", msg_pseudo);
 
@@ -198,6 +201,10 @@ int main(int argc, char *argv[]) {
     *pos = '\0';
 
 
+    // Choisi une couleur random pour le client parmis les 7 couleurs disponibles dans array_color et stocke le pointeur dans color
+    srand(time(NULL));
+    color = array_color[rand() % 7];
+
 
     printf("Debut programme client\n");
 
@@ -248,7 +255,8 @@ int main(int argc, char *argv[]) {
     int nb_send;
 
     // Envoie "Pseudo" se connecte
-    strcpy(msg, pseudo);
+    strcpy(msg, color);
+    strcat(msg, pseudo);
     strcat(msg, " se connecte");
     nb_send = send(dS, msg, buffer_size, 0);
     if (nb_send == -1) {
@@ -262,6 +270,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    strcat(msg, "\033[0m");
 
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
