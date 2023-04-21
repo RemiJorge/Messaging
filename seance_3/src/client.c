@@ -28,7 +28,7 @@
 #define buffer_size 50
 #define max_length 38
 #define pseudo_length 10
-char msg [max_length];
+char msg [buffer_size];
 char input[max_length];
 char pseudo[pseudo_length];
 
@@ -95,15 +95,19 @@ void *writeMessage(void *arg) {
 
     while(1) {
 
-        fgets(input, max_length, stdin);
+        do{
+            fgets(input, max_length, stdin);
+            char *pos = strchr(input, '\n');
+            *pos = '\0';
+            //Remonte le curseur d'une ligne
+            printf("\033[1A");
 
-        char *pos = strchr(input, '\n');
-        *pos = '\0';
+            if (strlen(input) <= 0){ 
+                afficher(31, "", NULL);}
 
-        //Remonte le curseur d'une ligne
-        printf("\033[1A"); 
-        
-        
+        } while(strlen(input) <= 0);
+
+
 
         if (strcmp(input, "fin") == 0) {
             // envoie "pseudo" est parti
@@ -176,11 +180,9 @@ int main(int argc, char *argv[]) {
     
     // Demande le pseudo
     printf("Entrez votre pseudo (max %d caracteres) : ", pseudo_length - 1);
-    int condition = 0;
     do {
         fgets(pseudo, pseudo_length, stdin);
-        condition = strlen(pseudo) >= pseudo_length - 1;
-        if (condition) {
+        if (strlen(pseudo) >= pseudo_length - 1) {
             printf("Pseudo trop long, veuillez en saisir un autre (max %d caracteres) : ", pseudo_length - 1);
             //vide le buffer de fgets
             int c;
@@ -191,8 +193,7 @@ int main(int argc, char *argv[]) {
         else if (strlen(pseudo) < 3) {
             printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", pseudo_length - 1);
         }
-
-    } while (condition || strlen(pseudo) < 3);
+    } while (strlen(pseudo) >= pseudo_length - 1 || strlen(pseudo) < 3);
     char *pos = strchr(pseudo, '\n');
     *pos = '\0';
 
@@ -243,6 +244,25 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Socket Connecté\n");
+
+    int nb_send;
+
+    // Envoie "Pseudo" se connecte
+    strcpy(msg, pseudo);
+    strcat(msg, " se connecte");
+    nb_send = send(dS, msg, buffer_size, 0);
+    if (nb_send == -1) {
+        perror("Erreur lors de l'envoi du message");
+        close(dS);
+        exit(EXIT_FAILURE);
+    } else if (nb_send == 0) {
+        // Connection closed by remote host
+        afficher(31, "Le serveur a ferme la connexion\n", NULL);
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
+
+
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
@@ -253,6 +273,7 @@ int main(int argc, char *argv[]) {
     printf("\033[2J"); //Clear the screen
     printf("Bienvenue sur la messagerie instantanee !\n");
     printf("Vous etes connecte au serveur %s:%s en tant que %s.\n\n", argv[1], argv[2], pseudo);
+
 
     // Lancement du thread de lecture
     if (pthread_create(&readThread, NULL, readMessage, &dS) != 0) {
