@@ -27,32 +27,33 @@
 // Use : ./client <server_ip> <server_port>
 
 #define max_length 50
-int fin_discussion = 0;
 char msg [max_length];
 char input[max_length]; 
 
 
 void *afficher(int color, char *msg, void *args){
     
-    //Remonte le curseur d'une ligne
+    //Efface la ligne
     printf("\033[2K\r");
+    //Remonte le curseur d'une ligne
     printf("\033[1A");
+    //Efface la ligne et place le curseur en debut de ligne
     printf("\033[2K\r");
     //Change la couleur du texte
-
     printf("\033[%dm", color);
     //Affiche le message
     printf(msg, args);
+    //Change la couleur du texte en rouge
     printf("\n\033[35m");
     printf("---------- Entrez un message (max %d caracteres) -----------\n", max_length - 1);
-
-    //Change la couleur du texte en rouge
+    //Met le texte en gras
     printf("\033[1m");
     printf("Saisie : ");
-    printf("\033[0m");
+    printf("\033[0m"); //Remet le texte en normal
     fflush(stdout); //Flush le buffer de stdout
     return NULL;
 }
+
 
 void *readMessage(void *arg) {
     int dS = *(int *)arg;
@@ -68,18 +69,14 @@ void *readMessage(void *arg) {
             close(dS);
             exit(EXIT_FAILURE);
         } else if (nb_recv == 0) {
-            // Connection closed by remote host
-            afficher(31, "Connection closed by remote host\n", NULL);
-            close(dS);
-            exit(EXIT_FAILURE);
+            // Connection closed by client or server
+            break;
         }
 
         // Check if the message is "fin"
         // If it is, close the socket and exit
         if (strcmp(msg, "fin") == 0) {
-            afficher(31, "L'autre client met fin a la discussion\n", NULL);
-            fin_discussion = 1;
-            break;
+            afficher(31, "Un client à quitter la discussion\n", NULL);
         } else {
             // Afficher le message reçu
             afficher(34, "Message recu: %s\n", msg);   
@@ -88,7 +85,7 @@ void *readMessage(void *arg) {
 
     }
 
-    return NULL;
+    pthread_exit(0);
 }
 
 
@@ -117,22 +114,23 @@ void *writeMessage(void *arg) {
             exit(EXIT_FAILURE);
         } else if (nb_send == 0) {
             // Connection closed by remote host
-            afficher(31, "Connection closed by remote host\n", NULL);
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
             close(dS);
-            exit(EXIT_FAILURE);
+            break;
         }
 
         // Check if the message is "fin"
         // If it is, close the socket and exit
         if (strcmp(input, "fin") == 0) {
             afficher(31, "Vous mettez fin a la discussion\n", NULL);
-            fin_discussion = 1;
+            //Ferme la socket
+            close(dS);
             break;
         }
 
     }
 
-    return NULL;
+    pthread_exit(0);
 }
 
 
@@ -149,7 +147,7 @@ int main(int argc, char *argv[]) {
                 Usage: %s <server_ip> <server_port>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    printf("\033[2J");
+    printf("\033[2J"); //Clear the screen
     printf("Debut programme client\n");
     printf("Bienvenue sur la messagerie instantanee !\n");
 
@@ -195,45 +193,46 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Socket Connecté\n");
+    printf("Socket Connecté\n\n");
 
-
+    // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
-    // Create threads
+    // Initialisation des threads
     pthread_t readThread;
     pthread_t writeThread;
 
 
-    // Read message
+    // Lancement du thread de lecture
     if (pthread_create(&readThread, NULL, readMessage, &dS) != 0) {
         perror("Erreur lors de la creation du thread de lecture");
         close(dS);
         exit(EXIT_FAILURE);
     }
-
-    // Write message
+    // Lancement du thread d'écriture
     if (pthread_create(&writeThread, NULL, writeMessage, &dS) != 0) {
         perror("Erreur lors de la creation du thread d'ecriture");
         close(dS);
         exit(EXIT_FAILURE);
     }
 
-    while(!fin_discussion) {
-        sleep(1);
+
+
+
+    // Attente de la fin des threads
+    if (pthread_join(readThread, NULL) != 0) {
+        perror("Erreur lors de la fermeture du thread de lecture");
+        close(dS);
+        exit(EXIT_FAILURE);
     }
-
-
-
-    // Close the socket
-    if (close(dS) == -1){
-        perror("Erreur de close du socket");
+    if (pthread_join(writeThread, NULL) != 0) {
+        perror("Erreur lors de la fermeture du thread d'ecriture");
+        close(dS);
         exit(EXIT_FAILURE);
     }
 
-    printf("\033[2K\r");
-    printf("\033[1A");
-    printf("\033[2K\r");
+    //Efface les 2 dernières lignes
+    printf("\033[2K\033[1A\033[2K\r");
 
     return EXIT_SUCCESS;
 }
