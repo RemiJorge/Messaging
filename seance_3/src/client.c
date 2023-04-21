@@ -25,7 +25,7 @@
 // gcc -o client client.c
 
 // Use : ./client <server_ip> <server_port>
-#define buffer_size 50
+#define buffer_size 250
 #define max_length 38
 #define pseudo_length 10
 char msg [buffer_size];
