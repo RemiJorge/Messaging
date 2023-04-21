@@ -25,13 +25,16 @@
 // gcc -o client client.c
 
 // Use : ./client <server_ip> <server_port>
-
-#define max_length 50
+#define buffer_size 50
+#define max_length 38
+#define pseudo_length 10
 char msg [max_length];
-char input[max_length]; 
+char input[max_length];
+char pseudo[pseudo_length];
 
 
 void *afficher(int color, char *msg, void *args){
+    //Fonction formatant l'affichage
     
     //Efface la ligne
     printf("\033[2K\r");
@@ -56,6 +59,7 @@ void *afficher(int color, char *msg, void *args){
 
 
 void *readMessage(void *arg) {
+    // Fonction qui lit les messages envoyés par le serveur
     int dS = *(int *)arg;
     int nb_recv;
 
@@ -63,7 +67,7 @@ void *readMessage(void *arg) {
 
         // Read message
 
-        nb_recv = recv(dS, msg, max_length, 0);
+        nb_recv = recv(dS, msg, buffer_size, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception du message");
             close(dS);
@@ -72,16 +76,8 @@ void *readMessage(void *arg) {
             // Connection closed by client or server
             break;
         }
-
-        // Check if the message is "fin"
-        // If it is, close the socket and exit
-        if (strcmp(msg, "fin") == 0) {
-            afficher(31, "Un client à quitter la discussion\n", NULL);
-        } else {
-            // Afficher le message reçu
-            afficher(34, "Message recu: %s\n", msg);   
-
-        }
+            
+        afficher(34, "%s\n", msg);   
 
     }
 
@@ -90,24 +86,41 @@ void *readMessage(void *arg) {
 
 
 void *writeMessage(void *arg) {
+    // Fonction qui envoie les messages au serveur
     int dS = *(int *)arg;
     int nb_send;
+    char msg_pseudo[max_length + pseudo_length];
 
     afficher(31, "", NULL);
 
     while(1) {
 
-        fgets(input, max_length, stdin); 
+        fgets(input, max_length, stdin);
+
         char *pos = strchr(input, '\n');
         *pos = '\0';
 
         //Remonte le curseur d'une ligne
         printf("\033[1A"); 
         
-        afficher(32, "Message envoye: %s\n", input);
         
+
+        if (strcmp(input, "fin") == 0) {
+            // envoie "pseudo" est parti
+            strcpy(msg_pseudo, pseudo);
+            strcat(msg_pseudo, " est parti");
+        }
+        else{
+            // Concatenate pseudo and message
+            strcpy(msg_pseudo, pseudo);
+            strcat(msg_pseudo, ": ");
+            strcat(msg_pseudo, input);
+        }
+
+        afficher(32, "%s\n", msg_pseudo);
+
         // Send message
-        nb_send = send(dS, input, max_length, 0);
+        nb_send = send(dS, msg_pseudo, buffer_size, 0);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(dS);
@@ -123,6 +136,15 @@ void *writeMessage(void *arg) {
         // If it is, close the socket and exit
         if (strcmp(input, "fin") == 0) {
             afficher(31, "Vous mettez fin a la discussion\n", NULL);
+            nb_send = send(dS, input, buffer_size, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                close(dS);
+                exit(EXIT_FAILURE);
+            } else if (nb_send == 0) {
+                // Connection closed by remote host
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            }
             //Ferme la socket
             close(dS);
             break;
@@ -134,9 +156,11 @@ void *writeMessage(void *arg) {
 }
 
 
+
 void handle_sigint(int sig) {
     afficher(31, "Pour quitter, veuillez saisir le mot 'fin'.\n", NULL);
 }
+
 
 
 
@@ -147,9 +171,34 @@ int main(int argc, char *argv[]) {
                 Usage: %s <server_ip> <server_port>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+
     printf("\033[2J"); //Clear the screen
+    
+    // Demande le pseudo
+    printf("Entrez votre pseudo (max %d caracteres) : ", pseudo_length - 1);
+    int condition = 0;
+    do {
+        fgets(pseudo, pseudo_length, stdin);
+        condition = strlen(pseudo) >= pseudo_length - 1;
+        if (condition) {
+            printf("Pseudo trop long, veuillez en saisir un autre (max %d caracteres) : ", pseudo_length - 1);
+            //vide le buffer de fgets
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF){};
+
+        } 
+        // minimum 3 caractères
+        else if (strlen(pseudo) < 3) {
+            printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", pseudo_length - 1);
+        }
+
+    } while (condition || strlen(pseudo) < 3);
+    char *pos = strchr(pseudo, '\n');
+    *pos = '\0';
+
+
+
     printf("Debut programme client\n");
-    printf("Bienvenue sur la messagerie instantanee !\n");
 
     int dS = socket(PF_INET, SOCK_STREAM, 0);
     if (dS == -1) {
@@ -193,8 +242,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Socket Connecté\n\n");
-
+    printf("Socket Connecté\n");
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
@@ -202,6 +250,9 @@ int main(int argc, char *argv[]) {
     pthread_t readThread;
     pthread_t writeThread;
 
+    printf("\033[2J"); //Clear the screen
+    printf("Bienvenue sur la messagerie instantanee !\n");
+    printf("Vous etes connecte au serveur %s:%s en tant que %s.\n\n", argv[1], argv[2], pseudo);
 
     // Lancement du thread de lecture
     if (pthread_create(&readThread, NULL, readMessage, &dS) != 0) {
