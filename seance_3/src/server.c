@@ -9,13 +9,15 @@
 #include <semaphore.h>
 
 // DOCUMENTATION
-// This program acts as a server to relay messages between two clients
+// This program acts as a server to relay messages between multiple clients
 // It uses the TCP protocol
 // It takes one argument, the port to use
-// If at some point one of the clients send "fin",
-// the server will close the discussion between the clients
+// If at some point if one of the clients send "fin",
+// the server will disconnect that client and will continue to relay messages between the other clients
 
 // The server can handle multiple clients at the same time
+// If the server is full, clients trying to connect will have to wait
+// until a client disconnects
 
 // You can use gcc to compile this program:
 // gcc -o serv server.c
@@ -34,6 +36,7 @@ sem_t free_spot;
 
 // A function that will take as an argument the socket descriptor of the client
 // and will return the indice of the client in the tab_client array
+
 int get_indice(int dSC) {
     int i = 0;
     while (i < MAX_CLIENT) {
@@ -49,6 +52,7 @@ int get_indice(int dSC) {
 
 // A function that will find the indice of the first free spot in the tab_client array
 // and will return it, or -1 if there is no free spot
+
 int get_free_spot() {
     int i = 0;
     while (i < MAX_CLIENT) {
@@ -68,8 +72,8 @@ int get_free_spot() {
 
 void * broadcast(void * dS_client) {
 
-    int dSC = *(int *)dS_client;
-    char buffer[BUFFER_SIZE];
+    int dSC = *(int *)dS_client; // The socket descriptor of the client
+    char buffer[BUFFER_SIZE]; // Buffer to store the message
     int nb_recv;
     int nb_send;
     int i;
@@ -83,13 +87,13 @@ void * broadcast(void * dS_client) {
             exit(EXIT_FAILURE);
         }
         if (nb_recv == 0) {
-            printf("Client déconnecté\n");
+            printf("Client deconnecte dSC : %d\n", dSC);
             break;
         }
 
         printf("Message recu: %s du client dSC: %d \n", buffer, dSC);
 
-        // If the client send "fin", we break and close his socket
+        // If the client sends "fin", we break and close his socket
         if (strcmp(buffer, "fin") == 0) {
             printf("Fin de la discussion pour client dSC: %d\n", dSC);
             break;
@@ -109,7 +113,7 @@ void * broadcast(void * dS_client) {
                 }
                 // Si jamais un client se deconnecte lorsqu'on est entrain d'envoyer un message aux autres clients
                 if (nb_send == 0) {
-                    printf("Le client dSC: %d s'est deconnecte,donc le message ne s'est pas envoye a lui\n", tab_client[i]);
+                    printf("Le client dSC: %d s'est deconnecte, donc le message ne s'est pas envoye a lui\n", tab_client[i]);
                     // Ici, je choisi de ne pas break, 
                     // car je veux quand même envoyer le message aux autres clients
                 }
@@ -148,22 +152,22 @@ int main(int argc, char *argv[]) {
 
   int dS = socket(PF_INET, SOCK_STREAM, 0);
   if(dS == -1) {
-    perror("Erreur lors de la création du socket");
+    perror("Erreur lors de la creation du socket");
     exit(EXIT_FAILURE);
   }
-  printf("Socket créé\n");
+  printf("Socket cree\n");
 
   // Voici la doc des structs utilises
   /*
   struct sockaddr_in {
     sa_family_t    sin_family;  famille d'adresses : AF_INET     
-    uint16_t       sin_port;    port dans l'ordre d'octets réseau
+    uint16_t       sin_port;    port dans l'ordre d'octets reseau
     struct in_addr sin_addr;    adresse Internet                 
   };
 
  Adresse Internet 
   struct in_addr {
-    uint32_t    s_addr;   Adresse dans l'ordre d'octets réseau 
+    uint32_t    s_addr;   Adresse dans l'ordre d'octets reseau 
   };
   */
 
@@ -177,15 +181,15 @@ int main(int argc, char *argv[]) {
     perror("Erreur lors du nommage du socket");
     exit(EXIT_FAILURE);
   }
-  printf("Socket nommé\n");
+  printf("Socket nomme\n");
 
   // Ecoute
 
   if(listen(dS, 10) == -1) {
-    perror("Erreur lors du passage en mode écoute");
+    perror("Erreur lors du passage en mode ecoute");
     exit(EXIT_FAILURE);
   }
-  printf("Mode écoute\n");
+  printf("Mode ecoute\n");
 
   // We put zeros in the array to show that the clients are not connected
   memset(tab_client, 0, sizeof(tab_client));
@@ -193,13 +197,13 @@ int main(int argc, char *argv[]) {
   // Initialise the semaphore
   sem_init(&free_spot, 0, MAX_CLIENT);
 
-  // Just in case we want to know the address of the clients
+  // Just in case, we want to know the address of each client
   struct sockaddr_in tab_adr[MAX_CLIENT];
   socklen_t tab_lg[MAX_CLIENT];
   pthread_t tid;
   pthread_t Threads_id [MAX_CLIENT] ;
 
-  // Acceptation de la connexion des deux clients
+  // Acceptation de la connexion des clients
   printf("En attente de connexion des clients\n");
 
   // We use a variable to know where to put the next client
@@ -218,13 +222,13 @@ int main(int argc, char *argv[]) {
       perror("Erreur lors de la connexion avec le client");
       exit(EXIT_FAILURE);
     }
-    printf("Client %d connecté\n", i+1);
+    printf("Client %d connecte\n", i+1);
   
     // Communication managed by threads
     // Each thread will listen to messages from a client and send 
     // the messages to the rest of the clients (broadcast)
     if (pthread_create(&tid, NULL, broadcast, (void *) &tab_client[i]) != 0) {
-      perror("Erreur lors de la création du thread");
+      perror("Erreur lors de la creation du thread");
       exit(EXIT_FAILURE);
     }
     else{
@@ -234,6 +238,8 @@ int main(int argc, char *argv[]) {
   
   }
   
+  // This part is never reached
+
   // We wait for the threads to finish
   for (int i = 0; i < MAX_CLIENT; i++){
     if (pthread_join(Threads_id[i], NULL) != 0) {
@@ -241,8 +247,6 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
   }
-
-  printf("Both clients disconnected\n");
 
   // Close the main socket
   if (close(dS)==-1){

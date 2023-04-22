@@ -15,11 +15,6 @@
 // It takes two arguments, the server ip and the server port
 // If at some point one of the clients sends "fin",
 // the server will close the discussion between the clients
-// and wait for a new one.
-
-// IMPORTANT:
-// The third argument is 1 if the client is a writer, 2 if it is a reader
-// MAKE SURE THE WRITER CONNECTS FIRST
 
 // You can use gcc to compile this program:
 // gcc -o client client.c

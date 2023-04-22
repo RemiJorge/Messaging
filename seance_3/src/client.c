@@ -10,16 +10,12 @@
 
 // DOCUMENTATION
 // This program acts as a client which connects to a server
-// to talk with another client
+// to talk with other clients
 // It uses the TCP protocol
 // It takes two arguments, the server ip and the server port
-// If at some point one of the clients sends "fin",
-// the server will close the discussion between the clients
-// and wait for a new one.
-
-// IMPORTANT:
-// The third argument is 1 if the client is a writer, 2 if it is a reader
-// MAKE SURE THE WRITER CONNECTS FIRST
+// If at some point the client sends "fin",
+// the server will disconnect the client.
+// The client needs to provide a username before connecting to the server
 
 // You can use gcc to compile this program:
 // gcc -o client client.c
