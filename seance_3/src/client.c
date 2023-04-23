@@ -111,7 +111,9 @@ void *writeMessage(void *arg) {
         do{
             fgets(input, MAX_LENGTH, stdin);
             char *pos = strchr(input, '\n');
-            *pos = '\0';
+            if (pos != NULL){        
+                *pos = '\0';
+            }
             //Remonte le curseur d'une ligne
             printf("\033[1A");
 
@@ -199,21 +201,24 @@ int main(int argc, char *argv[]) {
     printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 1);
     do {
         fgets(pseudo, PSEUDO_LENGTH, stdin);
-        if (strlen(pseudo) >= PSEUDO_LENGTH - 1) {
-            printf("Pseudo trop long, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+        char *pos = strchr(pseudo, '\n');
+        if (pos != NULL){        
+            *pos = '\0';
+        }
+        // vider le buffer lorque le pseudo est trop long
+        if (strlen(pseudo) >= PSEUDO_LENGTH - 1) { // c'est le cas d'egalite qui est important
             //vide le buffer de fgets
             int c;
             while ((c = getchar()) != '\n' && c != EOF){};
-
-        } 
-        // minimum 3 caractères
-        else if (strlen(pseudo) < 3) {
-            printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
         }
-    } while (strlen(pseudo) >= PSEUDO_LENGTH - 1 || strlen(pseudo) < 3);
-    char *pos = strchr(pseudo, '\n');
-    *pos = '\0';
 
+        // minimum 3 caractères
+        if (strlen(pseudo) < 3) {
+            printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+            strcpy(pseudo, "");
+        }
+    } while (strlen(pseudo) < 3);
+    
 
     // Choisi une couleur random pour le client parmis les 7 couleurs disponibles dans array_color et stocke le pointeur dans color
     srand(time(NULL));
