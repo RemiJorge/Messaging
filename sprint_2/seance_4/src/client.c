@@ -88,7 +88,7 @@ void *readMessage(void *arg) {
         }
             
         afficher(34, "%s\n", msg);   
-
+        
     }
 
     pthread_exit(0);
@@ -121,6 +121,23 @@ void *writeMessage(void *arg) {
                 afficher(31, "", NULL);}
 
         } while(strlen(input) <= 0);
+
+        // Si l'input commence par "/man", affiche l'aide stockée dans le fichier "./manuel.txt"
+        if (strcmp(input,"/man") == 0){
+            FILE *fichier = NULL;
+            fichier = fopen("../src/manuel.txt", "r");
+            if (fichier != NULL){
+                char ligne[100];
+                while (fgets(ligne, 100, fichier) != NULL){
+                    afficher(32, "%s", ligne);
+                }
+                fclose(fichier);
+            }
+            else{
+                afficher(31, "Erreur lors de l'ouverture du fichier manuel.txt\n", NULL);
+            }
+            continue;
+        }
 
 
         // Formatage du message
