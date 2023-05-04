@@ -12,12 +12,9 @@
 // This program acts as a server to relay messages between multiple clients
 // It uses the TCP protocol
 // It takes one argument, the port to use
-// If at some point if one of the clients send "fin",
-// the server will disconnect that client and will continue to relay messages between the other clients
 
-// The server can handle multiple clients at the same time
-// If the server is full, clients trying to connect will have to wait
-// until a client disconnects
+// Please read the README.md file for more information
+// including the different commands that can be used
 
 // You can use gcc to compile this program:
 // gcc -o serv server.c
@@ -98,18 +95,18 @@ int dequeue(Queue * q){
 ****************************************/
 
 // Maximum number of clients that can connect to the server
-#define MAX_CLIENT 10
+#define MAX_CLIENT 25
 // Buffer size for messages (this is the total size of the message)
-#define BUFFER_SIZE 250
+#define BUFFER_SIZE 1000
 // Username size
-#define USERNAME_SIZE 20
+#define USERNAME_SIZE 10
 // Size of commands
 #define CMD_SIZE 10
 // Size of the message
-#define MSG_SIZE 200
+#define MSG_SIZE 980
 
 // Array of socket descriptors for the clients that are trying to connect
-// The cleints that will be in this array are clients
+// The clients that will be in this array are clients
 // that have the same username as a client that is already connected,
 // or that haven't sent their username yet
 int tab_client_connecting[MAX_CLIENT];
@@ -174,9 +171,29 @@ int get_indice_dSC(int dSC) {
         i = i + 1;
     }
     // If the client is not in the array, we return -1
-    // This should never happen
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_client);
+    return -1;
+}
+
+// A function that will take as an argument the socket descriptor of the client
+// and will return the indice of the client in the tab_client_connecting array
+
+int get_indice_dSC_connecting(int dSC){
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_client_connecting);
+    int i = 0;
+    while (i < MAX_CLIENT) {
+        if (tab_client_connecting[i] == dSC) {
+            // Unlock the mutex
+            pthread_mutex_unlock(&mutex_tab_client_connecting);
+            return i;
+        }
+        i = i + 1;
+    }
+    // If the client is not in the array, we return -1
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_client_connecting);
     return -1;
 }
 
@@ -202,24 +219,24 @@ int get_indice_username(char * username) {
     return -1;
 }
 
-// A function that will find the indice of the first free spot in the tab_client array
+// A function that will find the indice of the first free spot in the tab_client_connecting array
 // and will return it, or -1 if there is no free spot
 
 int get_free_spot() {
     // Lock the mutex
-    pthread_mutex_lock(&mutex_tab_client);
+    pthread_mutex_lock(&mutex_tab_client_connecting);
     int i = 0;
     while (i < MAX_CLIENT) {
-        if (tab_client[i] == 0) {
+        if (tab_client_connecting[i] == 0) {
             // Unlock the mutex
-            pthread_mutex_unlock(&mutex_tab_client);
+            pthread_mutex_unlock(&mutex_tab_client_connecting);
             return i;
         }
         i = i + 1;
     }
     // If there is no free spot, we return -1
     // Unlock the mutex
-    pthread_mutex_unlock(&mutex_tab_client);
+    pthread_mutex_unlock(&mutex_tab_client_connecting);
     return -1;
 }
 
@@ -229,10 +246,11 @@ struct Message {
     // The command
     char cmd[CMD_SIZE];
     // If the server is receiving the message:
-        // If the commend is "dm", the username of the client to send the message to
+        // If the command is "dm", the username of the client to send the message to
         // If the command is "who", username is empty
         // If the command is "fin", username is empty
         // If the command is "list", username is empty
+        // If the client is trying to connect, username is the username of the client
     // If the server is sending the message:
         // If the command is "dm", username is who sent the message
         // If the command is "who", username is Server
@@ -255,25 +273,108 @@ struct Message {
 
 // A function for a thread that will take as an argument
 // the socket descriptor of the client, and will receive messages
-// from the client and send them to the other clients connected
+// from the client and redirect them to the right client/s
 
-void * client_thread(void * dS_client) {
+void * client_thread(void * dS_client_connection) {
 
-    //Lock the mutex because we are going to read the tab_client array
-    pthread_mutex_lock(&mutex_tab_client);
-    int dSC = *(int *)dS_client; // The socket descriptor of the client
-    pthread_mutex_unlock(&mutex_tab_client);
     Message msg_buffer; // The buffer to store the message
     Message * buffer = &msg_buffer; // A pointer to the buffer
     int nb_recv;
     int nb_send;
     int i;
     int client_indice;
+    int client_indice_connecting;
 
-    //We get the indice of the client in the tab_client array
-    client_indice = get_indice_dSC(dSC);
+    // Variable that will allow us to know if we can continue the thread
+    // This variable will be set to 0 if the client disconnects while he is giving his username
+    // It will cause the while loops to stop
+    int continue_thread = 1;
 
-    while (1) {
+    /********************************
+        Unique Username Management
+    *********************************/
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_client_connecting);
+    int dSC_connection = *(int *)dS_client_connection; // The socket descriptor of the client
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_client_connecting);
+    client_indice_connecting = get_indice_dSC_connecting(dSC_connection); // The indice of the client in the tab_client_connecting array
+
+    // While the client has not provided a unique username, 
+    // we do not put him in the tab_client array
+    // Everytime he send a username, we check if it is unique
+    // If it is not, we send him false and he has to send another username
+    // If it is, we send him true and we put him in the tab_client array
+
+    while (continue_thread == 1) {
+        // We receive the message from the client
+        nb_recv = recv(dSC_connection, buffer, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception");
+            printf("L'erreur est dans le thread du client : %d\n", client_indice_connecting + 1);
+            exit(EXIT_FAILURE);
+        }
+        if (nb_recv == 0) {
+            printf("Client %d s'est deconnecte\n", client_indice_connecting + 1);
+            // Here, the client has disconnected before even providing a valid username
+            // This will ensure that the next while loop will not be executed
+            continue_thread = 0;
+            break;
+        }
+
+        // We check if the username is unique
+        // If it is, we put the client in the tab_client array
+        // If it is not, we send him false and he has to send another username
+        if (get_indice_username(buffer->username) == -1) {
+            // We put the client in the tab_client array
+            // Lock the mutex because we are going to write in the tab_client array
+            pthread_mutex_lock(&mutex_tab_client);
+            tab_client[client_indice_connecting] = dSC_connection;
+            // Unlock the mutex
+            pthread_mutex_unlock(&mutex_tab_client);
+            // We put the username in the tab_username array
+            // Lock the mutex because we are going to write in the tab_username array
+            pthread_mutex_lock(&mutex_tab_username);
+            strcpy(tab_username[client_indice_connecting], buffer->username);
+            // Unlock the mutex
+            pthread_mutex_unlock(&mutex_tab_username);
+            // We send true to the client
+            strcpy(buffer->username, "Server");
+            strcpy(buffer->message, "true");
+            nb_send = send(dSC_connection, buffer, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi");
+                printf("L'erreur est dans le thread du client : %d\n", client_indice_connecting + 1);
+                exit(EXIT_FAILURE);
+            }
+            break;
+        } 
+        else {
+            // We send false to the client
+            strcpy(buffer->username, "Server");
+            strcpy(buffer->message, "false");
+            nb_send = send(dSC_connection, buffer, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi");
+                printf("L'erreur est dans le thread du client : %d\n", client_indice_connecting + 1);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+
+    }
+
+    // Get the pointer to the place in the tab_client array where the socket descriptor of the client is stored
+    int * dS_client = &tab_client[client_indice_connecting];
+    client_indice = client_indice_connecting;
+
+
+    /***************************************
+        Communication with other clients
+    ****************************************/
+    int dSC = dSC_connection; // The socket descriptor of the client
+
+    while (continue_thread == 1) {
 
         // We receive the message from the client
         nb_recv = recv(dSC, buffer, BUFFER_SIZE, 0);
@@ -290,7 +391,7 @@ void * client_thread(void * dS_client) {
         printf("Message recu: %s du client: %d \n", buffer->message, client_indice + 1);
 
         // If the client sends "fin", we break and close his socket
-        if (strcmp(buffer->message, "fin") == 0) {
+        if (strcmp(buffer->cmd, "fin") == 0) {
             printf("Fin de la discussion pour client: %d\n", client_indice + 1);
             break;
         }
@@ -377,7 +478,7 @@ void * client_thread(void * dS_client) {
         }
 
 
-        // By default, we send the message to all the clients connected
+        // By default, we send the message to all the clients connected,
         // their socket descriptors are in the array tab_client
         i = 0;
         // Lock the mutex
@@ -409,6 +510,10 @@ void * client_thread(void * dS_client) {
         pthread_mutex_unlock(&mutex_tab_client);
     }
 
+    /**************************
+           End of thread
+    ***************************/
+
     // We close the socket of the client who wanted to disconnect
     if (close(dSC) == -1) {
         perror("Erreur lors de la fermeture du descripteur de fichier");
@@ -420,6 +525,13 @@ void * client_thread(void * dS_client) {
     *(int *)dS_client = 0;
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_client);
+
+    // We put 0 in the tab_client_connecting array
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_client_connecting);
+    *(int *)dS_client_connection = 0;
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_client_connecting);
 
     // We clear the username of the client
     // Lock the mutex
@@ -548,6 +660,7 @@ int main(int argc, char *argv[]) {
 
   // We put zeros in the arrays to show that the clients are not connected
   // and that the threads are not created
+  memset(tab_client_connecting, 0, sizeof(tab_client_connecting));
   memset(tab_client, 0, sizeof(tab_client));
   memset(Threads_id, 0, sizeof(Threads_id));
 
@@ -593,27 +706,17 @@ int main(int argc, char *argv[]) {
     int i = get_free_spot();
 
     tab_lg[i] = sizeof(struct sockaddr_in);
-    tab_client[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
-    if(tab_client[i] == -1) {
+    tab_client_connecting[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
+    if(tab_client_connecting[i] == -1) {
       perror("Erreur lors de la connexion avec le client");
       exit(EXIT_FAILURE);
     }
     printf("Client %d connecte\n", i+1);
 
-    // We get the username of the client
-    char username[USERNAME_SIZE];
-    if (recv(tab_client[i], username, USERNAME_SIZE, 0) == -1) {
-      perror("Erreur lors de la reception du nom d'utilisateur");
-      exit(EXIT_FAILURE);
-    }
-
-    // We store the username in the array
-    strcpy(tab_username[i], username);
-  
+    // We create a thread for the client
     // Communication managed by threads
-    // Each thread will listen to messages from a client and send 
-    // the messages to the rest of the clients (broadcast)
-    if (pthread_create(&tid, NULL, client_thread, (void *) &tab_client[i]) != 0) {
+    // Each thread will listen to messages from a client and relay them accordingly
+    if (pthread_create(&tid, NULL, client_thread, (void *) &tab_client_connecting[i]) != 0) {
       perror("Erreur lors de la creation du thread");
       exit(EXIT_FAILURE);
     }
