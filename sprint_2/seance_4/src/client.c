@@ -22,14 +22,42 @@
 
 // Use : ./client <server_ip> <server_port>
 
-#define BUFFER_SIZE 250 // taille maximal du message envoyé au serveur
-#define MAX_LENGTH 201 // taille maximal rentré par l'utilisateur
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
-char *array_color [7] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[37m"};
-char msg [BUFFER_SIZE]; // message envoyé au serveur
-char input[MAX_LENGTH]; // message rentré par l'utilisateur
+#define CMD_LENGTH 10 // taille maximal de la commande
+#define MSG_LENGTH 980 // taille maximal du message
+#define MAX_LENGTH 980 // taille maximal du message
+#define BUFFER_SIZE PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH // taille maximal du message envoyé au serveur
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
+char *array_color [7] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[37m"};
 char *color; // couleur attribuée à l'utilisateur
+
+// Struct for the messages
+typedef struct Message Message;
+struct Message {
+    // The command
+    char cmd[CMD_LENGTH];
+    // If the server is receiving the message:
+        // If the commend is "dm", the username of the client to send the message to
+        // If the command is "who", username is empty
+        // If the command is "fin", username is empty
+        // If the command is "list", username is empty
+    // If the server is sending the message:
+        // If the command is "dm", username is who sent the message
+        // If the command is "who", username is Server
+        // If the command is "list", username is Server
+    char username[PSEUDO_LENGTH];
+    // The message
+    // If the server is receiving the message:
+        // If the command is "fin", message is empty
+        // If the commande is "who", message is empty
+        // If the command is "list", message is empty
+        // If the command is "dm", message is the message to send
+    // If the server is sending the message:
+        // If the command is "who", message is username the client who asked
+        // If the command is "list", message is the list of the connected clients
+        // If the command is "dm", message is the message sent
+    char message[MSG_LENGTH];
+};
 
 
 
@@ -64,12 +92,21 @@ void *afficher(int color, char *msg, void *args){
 }
 
 
+void print_message(Message *output){
+    char msg[BUFFER_SIZE];
+    sprintf(msg, "%s%s%s%s%s", output->username, " : ", output->message, "\n", "\0");
+    afficher(32, msg, NULL);
+}
+
+
+
 void *readMessage(void *arg) {
     /*  Fonction qui lit les messages envoyés par le serveur
         arg : socket du serveur
     */
-
     int dS = *(int *)arg; // socket du serveur
+
+    Message *response = malloc(sizeof(Message));
     int nb_recv; // nombre de caractères reçus
 
     // Fin de boucle si le serveur ferme la connexion ou si le client envoie "fin"
@@ -77,7 +114,7 @@ void *readMessage(void *arg) {
 
         // Recoit le message des autres clients
 
-        nb_recv = recv(dS, msg, BUFFER_SIZE, 0);
+        nb_recv = recv(dS, response, BUFFER_SIZE, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception du message");
             close(dS);
@@ -87,12 +124,14 @@ void *readMessage(void *arg) {
             break;
         }
             
-        afficher(34, "%s\n", msg);   
+        print_message(response);  
         
     }
 
+    free(response);
     pthread_exit(0);
 }
+
 
 
 void *writeMessage(void *arg) {
@@ -102,14 +141,16 @@ void *writeMessage(void *arg) {
 
     int dS = *(int *)arg;
     int nb_send;
-    char msg_pseudo[BUFFER_SIZE];
+
+    Message *request = malloc(sizeof(Message));
+    char input[MSG_LENGTH]; // message saisi par l'utilisateur
 
     afficher(31, "", NULL);
 
     while(1) {
 
         do{
-            fgets(input, MAX_LENGTH, stdin);
+            fgets(input, MSG_LENGTH, stdin);
             char *pos = strchr(input, '\n');
             if (pos != NULL){        
                 *pos = '\0';
@@ -139,25 +180,49 @@ void *writeMessage(void *arg) {
             continue;
         }
 
-
         // Formatage du message
+        strcpy(request->cmd, "");
+        strcpy(request->username, pseudo);
+        strcpy(request->message, input);
 
-        strcpy(msg_pseudo, color); // ajout de la couleur de l'utilisateur
-        strcat(msg_pseudo, pseudo); // ajout du pseudo de l'utilisateur
+        // Si l'input est "/fin", ferme la connexion avec le serveur
+        if (strcmp(input, "/fin") == 0){
+            strcpy(request->cmd, "fin");
+        }
+
+
+        if (strcmp(input, "/who") == 0){
+            strcpy(request->cmd, "who");
+        }
+
+        if (strcmp(input, "/list") == 0){
+            strcpy(request->cmd, "list");
+        }
+
+        // Si l'input est "/mp pseudo message", envoie un message privé au client "pseudo"
+        // utiliser strtok pour séparer les arguments
+        char *traitement = strtok(input, " ");
+        if (strcmp(traitement, "/mp") == 0){
+            strcpy(request->cmd, "dm");
+            traitement = strtok(NULL, " ");
+            if (traitement == NULL){
+                afficher(31, "Erreur : veuillez entrer un pseudo\n  /mp <pseudo> <message>\n", NULL);
+                continue;
+            }
+            strcpy(request->username, traitement);
+            traitement = strtok(NULL, "\0");
+            if (traitement == NULL){
+                afficher(31, "Erreur : veuillez entrer un message\n  /mp <pseudo> <message>\n", NULL);
+                continue;
+            }
+            strcpy(request->message, traitement);
+        }
+
+
         
-        if (strcmp(input, "fin") == 0) {
-            strcat(msg_pseudo, " est parti");
-        }
-        else{
-            strcat(msg_pseudo, ": ");
-            strcat(msg_pseudo, input);
-        }
-        strcat(msg_pseudo, "\033[0m");
-
-        afficher(32, "%s\n", msg_pseudo);
 
         // Envoie le message au serveur
-        nb_send = send(dS, msg_pseudo, BUFFER_SIZE, 0);
+        nb_send = send(dS, request, BUFFER_SIZE, 0);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(dS);
@@ -170,25 +235,18 @@ void *writeMessage(void *arg) {
         }
 
         // Si le client envoie "fin", on ferme la socket
-        if (strcmp(input, "fin") == 0) {
+        if (strcmp(input, "/fin") == 0) {
             afficher(31, "Vous mettez fin a la discussion\n", NULL);
-            //Envoie le message au serveur
-            nb_send = send(dS, input, BUFFER_SIZE, 0);
-            if (nb_send == -1) {
-                perror("Erreur lors de l'envoi du message");
-                close(dS);
-                exit(EXIT_FAILURE);
-            } else if (nb_send == 0) {
-                // Connection closed by remote host
-                afficher(31, "Le serveur a ferme la connexion\n", NULL);
-            }
             //Ferme la socket
             close(dS);
             break;
         }
 
+        print_message(request);
+
     }
 
+    free(request);
     pthread_exit(0);
 }
 
@@ -213,28 +271,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("\033[2J"); //Clear the screen
-    
-    // Demande le pseudo
-    printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 1);
-    do {
-        fgets(pseudo, PSEUDO_LENGTH, stdin);
-        char *pos = strchr(pseudo, '\n');
-        if (pos != NULL){        
-            *pos = '\0';
-        }
-        // vider le buffer lorque le pseudo est trop long
-        if (strlen(pseudo) >= PSEUDO_LENGTH - 1) { // c'est le cas d'egalite qui est important
-            //vide le buffer de fgets
-            int c;
-            while ((c = getchar()) != '\n' && c != EOF){};
-        }
-
-        // minimum 3 caractères
-        if (strlen(pseudo) < 3) {
-            printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
-            strcpy(pseudo, "");
-        }
-    } while (strlen(pseudo) < 3);
     
 
     // Choisi une couleur random pour le client parmis les 7 couleurs disponibles dans array_color et stocke le pointeur dans color
@@ -288,24 +324,79 @@ int main(int argc, char *argv[]) {
 
     printf("Socket Connecté\n");
 
+    int pseudo_valide = 0;
     int nb_send;
+    char nb_recv;
+    Message *request = malloc(sizeof(Message));
 
-    // Envoie "Pseudo" se connecte
-    strcpy(msg, color);
-    strcat(msg, pseudo);
-    strcat(msg, " se connecte");
-    strcat(msg, "\033[0m"); 
-    nb_send = send(dS, msg, BUFFER_SIZE, 0);
-    if (nb_send == -1) {
-        perror("Erreur lors de l'envoi du message");
-        close(dS);
-        exit(EXIT_FAILURE);
-    } else if (nb_send == 0) {
-        // Connection closed by remote host
-        afficher(31, "Le serveur a ferme la connexion\n", NULL);
-        close(dS);
-        exit(EXIT_FAILURE);
-    }
+    // Demande le pseudo
+    printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+    do{ 
+        do {
+            fgets(pseudo, PSEUDO_LENGTH, stdin);
+            char *pos = strchr(pseudo, '\n');
+            if (pos != NULL){        
+                *pos = '\0';
+            }
+            // vider le buffer lorque le pseudo est trop long
+            if (strlen(pseudo) >= PSEUDO_LENGTH - 1) { // c'est le cas d'egalite qui est important
+                //vide le buffer de fgets
+                int c;
+                while ((c = getchar()) != '\n' && c != EOF){};
+            }
+
+            // minimum 3 caractères
+            if (strlen(pseudo) < 3) {
+                printf("Pseudo trop court, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+                strcpy(pseudo, "");
+            }
+        } while (strlen(pseudo) < 3 || strlen(pseudo) >= PSEUDO_LENGTH - 1);
+        
+        printf("Vous avez choisi le pseudo : %s\n", pseudo);
+
+        // Preparation du request
+        strcpy(request -> cmd, "");
+        strcpy(request -> username, pseudo);
+        strcpy(request -> message, "");
+
+        printf("Envoie du pseudo au serveur\n");
+        // Envoie le request au serveur
+        nb_send = send(dS, request, BUFFER_SIZE, 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi du message");
+            close(dS);
+            exit(EXIT_FAILURE);
+        } else if (nb_send == 0) {
+            // Connection closed by remote host
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(dS);
+            exit(EXIT_FAILURE);
+        }
+
+        // Reception de la reponse du serveur
+        nb_recv = recv(dS, request, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception du message");
+            close(dS);
+            exit(EXIT_FAILURE);
+        } else if (nb_recv == 0) {
+            // Connection closed by remote host
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(dS);
+            exit(EXIT_FAILURE);
+        }
+
+        // Si le pseudo est valide
+        if (strcmp(request -> message, "true") == 0) {
+            pseudo_valide = 1;
+        } else {
+            printf("Pseudo non disponible, veuillez en saisir un autre (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+            strcpy(pseudo, "");
+        }
+
+    } while (pseudo_valide == 0);
+
+
 
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
