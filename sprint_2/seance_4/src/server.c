@@ -274,6 +274,42 @@ struct Message {
 };
 
 
+// A function that will take as an argument the index of the client
+// and a pointer to a Message struct, and will send the message to all the clients
+// except the client who sent the message
+
+void send_to_all(int client_indice, Message * buffer) {
+    int i = 0;
+    int nb_send;
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_username);
+    strcpy(buffer->username, tab_username[client_indice]);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_username);
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_client);
+    while( i < MAX_CLIENT){
+        // We can't send the message to ourselves
+        // also, if a client disconnects, we don't send the message to him
+        if (tab_client[i] != 0 && i != client_indice) {
+            nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi");
+                printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
+                exit(EXIT_FAILURE);
+            }
+            // If ever a client disconnect while we are sending the messages
+            if (nb_send == 0) {
+                printf("Le client: %d s'est deconnecte, donc le message ne s'est pas envoye a lui\n", i + 1);
+                // We don't break here because we want to send the message to the other clients
+            }
+        }
+        i = i + 1;
+    }
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_client);
+}
+
 
 // A function for a thread that will take as an argument
 // the socket descriptor of the client, and will receive messages
@@ -378,6 +414,15 @@ void * client_thread(void * dS_client_connection) {
     ****************************************/
     int dSC = dSC_connection; // The socket descriptor of the client
 
+    // We tell the other clients that a new client has connected
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_username);
+    strcpy(buffer->username, tab_username[client_indice]);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_username);
+    strcpy(buffer->message, "Je me connecte. Bonjour!");
+    send_to_all(client_indice, buffer);
+
     while (continue_thread == 1) {
 
         // We receive the message from the client
@@ -389,6 +434,9 @@ void * client_thread(void * dS_client_connection) {
         }
         if (nb_recv == 0) {
             printf("Client %d s'est deconnecte\n", client_indice + 1);
+            strcpy(buffer->message, "Je me deconnecte. Au revoir!");
+            // We send a message to the other clients to tell them that this client has disconnected
+            send_to_all(client_indice, buffer);
             break;
         }
 
@@ -397,6 +445,9 @@ void * client_thread(void * dS_client_connection) {
         // If the client sends "fin", we break and close his socket
         if (strcmp(buffer->cmd, "fin") == 0) {
             printf("Fin de la discussion pour client: %d\n", client_indice + 1);
+            strcpy(buffer->message, "Je me deconnecte. Au revoir!");
+            // We send a message to the other clients to tell them that this client has disconnected
+            send_to_all(client_indice, buffer);
             break;
         }
 
@@ -483,35 +534,10 @@ void * client_thread(void * dS_client_connection) {
 
 
         // By default, we send the message to all the clients connected,
-        // their socket descriptors are in the array tab_client
-        i = 0;
-        // Lock the mutex
-        pthread_mutex_lock(&mutex_tab_username);
-        strcpy(buffer->username, tab_username[client_indice]);
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_tab_username);
-        // Lock the mutex
-        pthread_mutex_lock(&mutex_tab_client);
-        while( i < MAX_CLIENT){
-            // We can't send the message to ourselves
-            // also, if a client disconnects, we don't send the message to him
-            if (tab_client[i] != 0 && tab_client[i] != dSC) {
-                nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
-                if (nb_send == -1) {
-                    perror("Erreur lors de l'envoi");
-                    printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
-                    exit(EXIT_FAILURE);
-                }
-                // If ever a client disconnect while we are sending the messages
-                if (nb_send == 0) {
-                    printf("Le client: %d s'est deconnecte, donc le message ne s'est pas envoye a lui\n", i + 1);
-                    // We don't break here because we want to send the message to the other clients
-                }
-            }
-            i = i + 1;
-        }
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_tab_client);
+        // using the function send_to_all
+        
+        send_to_all(client_indice, buffer);
+        
     }
 
     /**************************
