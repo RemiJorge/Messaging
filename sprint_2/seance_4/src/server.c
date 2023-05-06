@@ -96,14 +96,16 @@ int dequeue(Queue * q){
 
 // Maximum number of clients that can connect to the server
 #define MAX_CLIENT 25
-// Buffer size for messages (this is the total size of the message)
-#define BUFFER_SIZE 1000
 // Username size
 #define USERNAME_SIZE 10
 // Size of commands
 #define CMD_SIZE 10
 // Size of the message
-#define MSG_SIZE 980
+#define MSG_SIZE 970
+// Size of color
+#define COLOR_SIZE 10
+// Buffer size for messages (this is the total size of the message)
+#define BUFFER_SIZE USERNAME_SIZE + CMD_SIZE + MSG_SIZE + COLOR_SIZE
 
 // Array of socket descriptors for the clients that are trying to connect
 // The clients that will be in this array are clients
@@ -267,6 +269,8 @@ struct Message {
         // If the command is "list", message is the list of the connected clients
         // If the command is "dm", message is the message sent
     char message[MSG_SIZE];
+    // The color of the message
+    char color[COLOR_SIZE];
 };
 
 

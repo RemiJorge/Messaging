@@ -14,3 +14,9 @@ Voici le guide d'utilisation de la messagerie:
 
 /man
     Affiche le guide d'utilisation
+
+/list 
+    Affiche tous les utilisateurs connectés
+
+/who
+    Renvoie le pseudo

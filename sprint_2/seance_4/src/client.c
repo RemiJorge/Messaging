@@ -24,11 +24,11 @@
 
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
 #define CMD_LENGTH 10 // taille maximal de la commande
-#define MSG_LENGTH 980 // taille maximal du message
-#define MAX_LENGTH 980 // taille maximal du message
-#define BUFFER_SIZE PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH // taille maximal du message envoyé au serveur
+#define MSG_LENGTH 970 // taille maximal du message
+#define COLOR_LENGTH 10 // taille de la couleur
+#define BUFFER_SIZE PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
-char *array_color [7] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[37m"};
+char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
 char *color; // couleur attribuée à l'utilisateur
 
 // Struct for the messages
@@ -57,6 +57,8 @@ struct Message {
         // If the command is "list", message is the list of the connected clients
         // If the command is "dm", message is the message sent
     char message[MSG_LENGTH];
+    // The color of the message
+    char color[COLOR_LENGTH];
 };
 
 
@@ -80,7 +82,7 @@ void *afficher(int color, char *msg, void *args){
     printf(msg, args);
     //Change la couleur du texte en rouge
     printf("\n\033[35m");
-    printf("---------- Entrez un message (max %d caracteres) -----------\n", MAX_LENGTH - 1);
+    printf("---------- Entrez un message (max %d caracteres) -----------\n", MSG_LENGTH - 1);
     //Met le texte en gras
     printf("\033[1m");
     printf("Saisie : ");
@@ -93,8 +95,60 @@ void *afficher(int color, char *msg, void *args){
 
 
 void print_message(Message *output){
-    char msg[BUFFER_SIZE];
-    sprintf(msg, "%s%s%s%s%s", output->username, " : ", output->message, "\n", "\0");
+    char msg[BUFFER_SIZE + 40]; // car "mp de " fait 6 caracteres de plus
+    char color_message[COLOR_LENGTH];
+    strcpy(color_message, output->color);
+    
+    strcpy(msg, color_message);
+    if (strcmp(output->cmd, "dm") == 0){
+        strcat(msg, "mp de ");
+    }
+    strcat(msg, output->username);
+    strcat(msg, " : ");
+    strcat(msg, "\033[0m");
+
+    // Si le message contient @<pseudo> on met la mention en surbrillance
+    char* start = output->message;
+    // Tant qu'on a pas atteint la fin du message
+    // On cherche une mention parmis toutes les mentions
+    while (*start != '\0') { 
+        char* pos = strstr(start, "@");
+        if (pos == NULL) {
+            strcat(msg, start);
+            break;
+        }
+        // Copie la partie du message avant la mention
+        // pos - start = longueur de la partie du message avant la mention
+        strncat(msg, start, pos - start); 
+        start = pos + 1;
+        // Récupère le pseudo de la mention
+        char* pseudo_start = start;
+        while (*start != '\0' && *start != ' ') {
+            start++;
+        }
+        char mention_pseudo[PSEUDO_LENGTH];
+        // Copie le pseudo de la mention
+        strncpy(mention_pseudo, pseudo_start, start - pseudo_start);
+        mention_pseudo[start - pseudo_start] = '\0';
+        // Ajoute la surbrillance si le pseudo correspond
+        if (strcmp(mention_pseudo, pseudo) == 0 || strcmp(mention_pseudo, "everyone") == 0) {
+            strcat(msg, "\033[42m@");
+            strncat(msg, pseudo_start, start - pseudo_start);
+            strcat(msg, "\033[0m");
+        } else {
+            strcat(msg, "@");
+            strncat(msg, pseudo_start, start - pseudo_start);
+        }
+    }
+
+    strcat(msg, "\n\0");
+
+    afficher(32, msg, NULL);
+}
+
+void print_dm_envoye(Message *output){
+    char msg[BUFFER_SIZE + 20]; // car "mp envoye a " fait 13 caracteres de plus
+    sprintf(msg, "%s%s%s%s%s%s%s", color, "mp envoye a ", output->username, " : ", "\033[0m", output->message, "\n\0");
     afficher(32, msg, NULL);
 }
 
@@ -123,7 +177,9 @@ void *readMessage(void *arg) {
             // Connection closed by client or server
             break;
         }
-            
+        
+
+
         print_message(response);  
         
     }
@@ -184,6 +240,8 @@ void *writeMessage(void *arg) {
         strcpy(request->cmd, "");
         strcpy(request->username, pseudo);
         strcpy(request->message, input);
+        strcpy(request->color, color);
+
 
         // Si l'input est "/fin", ferme la connexion avec le serveur
         if (strcmp(input, "/fin") == 0){
@@ -218,7 +276,6 @@ void *writeMessage(void *arg) {
             strcpy(request->message, traitement);
         }
 
-
         
 
         // Envoie le message au serveur
@@ -242,7 +299,11 @@ void *writeMessage(void *arg) {
             break;
         }
 
-        print_message(request);
+        if (strcmp(request->cmd, "dm") == 0){
+            print_dm_envoye(request);
+        } else {
+            print_message(request);
+        }
 
     }
 
@@ -273,9 +334,9 @@ int main(int argc, char *argv[]) {
     printf("\033[2J"); //Clear the screen
     
 
-    // Choisi une couleur random pour le client parmis les 7 couleurs disponibles dans array_color et stocke le pointeur dans color
+    // Choisi une couleur random pour le client parmis les 11 couleurs disponibles dans array_color et stocke le pointeur dans color
     srand(time(NULL));
-    color = array_color[rand() % 7];
+    color = array_color[rand() % 11];
 
 
     printf("Debut programme client\n");
@@ -358,6 +419,7 @@ int main(int argc, char *argv[]) {
         strcpy(request -> cmd, "");
         strcpy(request -> username, pseudo);
         strcpy(request -> message, "");
+        strcpy(request -> color, "");
 
         printf("Envoie du pseudo au serveur\n");
         // Envoie le request au serveur
