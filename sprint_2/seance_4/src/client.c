@@ -443,7 +443,7 @@ int main(int argc, char *argv[]) {
         strcpy(request -> cmd, "");
         strcpy(request -> username, pseudo);
         strcpy(request -> message, "");
-        strcpy(request -> color, "");
+        strcpy(request -> color, color);
 
         printf("Envoie du pseudo au serveur\n");
         // Envoie le request au serveur
