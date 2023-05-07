@@ -246,6 +246,7 @@ int get_free_spot() {
 typedef struct Message Message;
 struct Message {
     // The command
+    // Possible commands : "dm", "who", "fin", "list"
     char cmd[CMD_SIZE];
     // If the server is receiving the message:
         // If the command is "dm", the username of the client to send the message to

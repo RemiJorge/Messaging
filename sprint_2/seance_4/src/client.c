@@ -13,9 +13,10 @@
 // to talk with other clients
 // It uses the TCP protocol
 // It takes two arguments, the server ip and the server port
-// If at some point the client sends "fin",
-// the server will disconnect the client.
-// The client needs to provide a username before connecting to the server
+// The client needs to provide a unique username to chat with other clients
+
+// Please read the README.md file for more information
+// including the different commands that can be used
 
 // You can use gcc to compile this program:
 // gcc -o client client.c
@@ -35,12 +36,14 @@ char *color; // couleur attribuée à l'utilisateur
 typedef struct Message Message;
 struct Message {
     // The command
+    // Possible commands : "dm", "who", "fin", "list"
     char cmd[CMD_LENGTH];
     // If the server is receiving the message:
         // If the commend is "dm", the username of the client to send the message to
         // If the command is "who", username is empty
         // If the command is "fin", username is empty
         // If the command is "list", username is empty
+        // If the client is trying to connect, username is the username of the client
     // If the server is sending the message:
         // If the command is "dm", username is who sent the message
         // If the command is "who", username is Server
