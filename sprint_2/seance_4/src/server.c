@@ -415,6 +415,7 @@ void * client_thread(void * dS_client_connection) {
     ****************************************/
     int dSC = dSC_connection; // The socket descriptor of the client
 
+    if (continue_thread == 1) {
     // We tell the other clients that a new client has connected
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_username);
@@ -423,6 +424,7 @@ void * client_thread(void * dS_client_connection) {
     pthread_mutex_unlock(&mutex_tab_username);
     strcpy(buffer->message, "Je me connecte. Bonjour!");
     send_to_all(client_indice, buffer);
+    }
 
     while (continue_thread == 1) {
 
