@@ -23,6 +23,10 @@
 
 // Use : ./client <server_ip> <server_port>
 
+/*******************************************
+            VARIABLES GLOBALES
+********************************************/
+
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
 #define CMD_LENGTH 10 // taille maximal de la commande
 #define MSG_LENGTH 970 // taille maximal du message
@@ -65,6 +69,10 @@ struct Message {
 };
 
 
+
+/*******************************************
+            FONCTIONS UTILITAIRES
+********************************************/
 
 void *afficher(int color, char *msg, void *args){
     /*  Fonction formatant l'affichage 
@@ -157,6 +165,12 @@ void print_dm_envoye(Message *output){
 
 
 
+/*******************************************
+            FONCTIONS DE THREADS
+********************************************/
+
+/************** LECTURE ****************/
+
 void *readMessage(void *arg) {
     /*  Fonction qui lit les messages envoyés par le serveur
         arg : socket du serveur
@@ -192,6 +206,7 @@ void *readMessage(void *arg) {
 }
 
 
+/************** ECRITURE ****************/
 
 void *writeMessage(void *arg) {
     /*  Fonction qui envoie les messages au serveur
@@ -315,6 +330,9 @@ void *writeMessage(void *arg) {
 }
 
 
+/*******************************************
+            GESTIONS DES SIGNAUX
+********************************************/
 
 void handle_sigint(int sig) {
     // Fonction qui gère le signal SIGINT (Ctrl+C)
@@ -324,6 +342,9 @@ void handle_sigint(int sig) {
 }
 
 
+/*******************************************
+                MAIN
+********************************************/
 
 
 int main(int argc, char *argv[]) {
