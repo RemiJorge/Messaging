@@ -28,16 +28,16 @@ Then the clients
 
 Voici le guide d'utilisation de la messagerie:
 
-@<pseudo> <message>
+@pseudo message
     Mentionne une personne specifique sur le server, affiche le message en evidence
 
-@<everyone> <message>
+@everyone message
     Mentionne toutes les personnes actuellement sur le server
 
 /fin
     Permet de mettre fin au protocole de communication et fermer le programme
 
-/mp <pseudo> <message>
+/mp pseudo message
     Envoie un message privé à la personne mentionnée par le pseudo
 
 /man
