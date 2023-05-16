@@ -23,14 +23,14 @@
 // gcc -o client client.c
 
 // Use : ./client <server_ip> <server_port>
-
+//
 /*******************************************
             VARIABLES GLOBALES
 ********************************************/
 
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
 #define CMD_LENGTH 10 // taille maximal de la commande
-#define MSG_LENGTH 960 // taille maximal du message
+#define MSG_LENGTH 400 // taille maximal du message
 #define COLOR_LENGTH 10 // taille de la couleur
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
@@ -202,6 +202,7 @@ void *upload_file(void* filename){
     // Fonction qui envoie un fichier au serveur (thread)
     // On utilise un thread pour pouvoir envoyer un message au serveur pendant l'envoi du fichier
     FILE *fichier = NULL;
+    printf("Chargement du fichier %s\n", (char*) filename);
     fichier = fopen((char*) filename, "r");
     if (fichier == NULL){
         afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
@@ -216,6 +217,7 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
+    printf("Socket Créé\n");
     struct sockaddr_in aS;
 
     aS.sin_family = AF_INET;
@@ -235,6 +237,7 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
+    printf("Socket Connecté\n");
     // Formatage du message
     strcpy(request->cmd, "upload");
     strcpy(request->from, pseudo);
@@ -243,6 +246,7 @@ void *upload_file(void* filename){
     strcpy(request->color, color);
 
     // Envoie le nom du fichier au serveur
+    printf("Envoie du nom du fichier au serveur\n");
     int nb_send = send(dS, request, BUFFER_SIZE, 0);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
@@ -255,9 +259,13 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
+    printf("Envoie du fichier au serveur\n");
     // Envoie le fichier au serveur
     while(fgets(request->message, MSG_LENGTH, fichier) != NULL) {
         nb_send = send(dS, request, BUFFER_SIZE, 0);
+        printf("Taille envoye: %d\n", nb_send);
+        printf("Commande envoye: %s\n", request->cmd);
+        printf("Message envoye: %s\n", request->message);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(dS);
@@ -269,12 +277,15 @@ void *upload_file(void* filename){
             exit(EXIT_FAILURE);
         }
         bzero(request->message, MSG_LENGTH);
+        sleep(1);
     }
 
     strcpy(request->cmd, "endu");
 
+    printf("Envoie du message de fin d'upload au serveur\n");
     // Envoie un message vide pour prevenir le serveur que le fichier est fini
     nb_send = send(dS, request, BUFFER_SIZE, 0);
+    printf("Message envoye: %d\n", nb_send);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
         close(dS);
@@ -286,7 +297,7 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
-
+    printf("Fermeture de la socket\n");
     fclose(fichier);
     free(request);
     pthread_exit(0);
@@ -438,9 +449,6 @@ void *writeMessage(void *arg) {
                 exit(EXIT_FAILURE);
             }
 
-
-
-            continue;
         }
 
 
