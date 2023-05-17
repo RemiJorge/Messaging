@@ -31,7 +31,7 @@ typedef struct Queue Queue;
 typedef struct Element Element;
 
 struct Element{
-    int number;
+    pthread_t number;
     Element *next;
 };
 
@@ -51,7 +51,7 @@ Queue * new_queue(){
 }
 
 // Adds an element to the queue
-void enqueue(Queue * q, int number){
+void enqueue(Queue * q, pthread_t number){
     Element * e = malloc(sizeof(Element));
     e->number = number;
     e->next = NULL;
@@ -69,13 +69,13 @@ void enqueue(Queue * q, int number){
 
 // Removes the first element of the queue and returns it
 // If the queue is empty, returns -1
-int dequeue(Queue * q){
+pthread_t dequeue(Queue * q){
     if(q->premier == NULL){
         return -1;
     }else{
         Element * e = q->premier;
         q->premier = e->next;
-        int number = e->number;
+        pthread_t number = e->number;
         free(e);
         q->count--;
         return number;
@@ -102,7 +102,7 @@ int dequeue(Queue * q){
 // Size of commands
 #define CMD_SIZE 10
 // Size of the message
-#define MSG_SIZE 400
+#define MSG_SIZE 960
 // Size of color
 #define COLOR_SIZE 10
 // Buffer size for messages (this is the total size of the message)
@@ -166,6 +166,7 @@ Queue * disconnected_clients;
 // Mutex to protect the disconnected_clients queue
 pthread_mutex_t mutex_disconnected_clients;
 
+/*
 // A shared queue to store the ids of threads that have ended for upload and download
 Queue * thread_queue;
 
@@ -174,6 +175,7 @@ pthread_mutex_t mutex_thread_queue;
 
 // A semaphore to indicate when a thread has ended for upload and download
 sem_t thread_end_upload_download;
+*/
 
 /**************************************
            Utility functions
@@ -334,10 +336,13 @@ void send_to_all(int client_indice, Message * buffer) {
 
 void * upload_file_thread(void * arg){
     int nb_recv; // The number of bytes received
-    int nb_send; // The number of bytes sent
     Message msg_buffer; // The buffer for the messages
     Message * buffer = &msg_buffer; // A pointer to the buffer
     int dS_thread_upload; // The socket for the upload for the accept
+    int continue_thread = 1; // A variable to know if we continue the thread or not
+    long file_size; // The size of the file
+    char path[MSG_SIZE]; // The path of the file
+    FILE * file; // The file
 
     pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
 
@@ -362,96 +367,85 @@ void * upload_file_thread(void * arg){
     // If ever a client disconnect while we are receiving the messages
     if (nb_recv == 0) {
         printf("Le client s'est deconnecte dans le file upload\n");
-        // We close the socket
-        close(dS_thread_upload);
-        // Push thread id to queue and increment semaphore
-        //TODO
-        // We exit the thread
-        pthread_exit(NULL);
+        continue_thread = 0;
     }
-    printf("Le nom du fichier est: %s\n", buffer->message);
 
 
-    // We create the file
-    char path[MSG_SIZE];
-    strcpy(path, "server_files/");
-    strcat(path, buffer->message);
-    FILE *file = fopen(path, "w");
-    if (file == NULL) {
-        perror("Erreur lors de la creation du fichier");
-        //TODO: close socket and push id to queue
-        exit(EXIT_FAILURE);
-    }
-    printf("Le fichier %s a ete cree\n", buffer->message);
+    if (continue_thread == 1){
+        printf("Le nom du fichier est: %s\n", buffer->message);
 
-    // We receive the size of the file
-    long file_size;
-    nb_recv = recv(dS_thread_upload, &file_size, sizeof(long), 0);
-    if (nb_recv == -1) {
-        perror("Erreur lors de la reception upload client");
-        exit(EXIT_FAILURE);
-    }
-    // If ever a client disconnect while we are receiving the messages
-    if (nb_recv == 0) {
-        printf("Le client s'est deconnecte dans le file upload\n");
-        // We close the socket
-        close(dS_thread_upload);
-        // Push thread id to queue and increment semaphore
-        //TODO
-        // We exit the thread
-        pthread_exit(NULL);
-    }
-    printf("La taille du fichier est: %ld\n", file_size);
-    
-    // Packet for the file data
-    char packet[BUFFER_SIZE];
-    int nb_recv_total = 0;
+        // We create the file
+        strcpy(path, "server_files/");
+        strcat(path, buffer->message);
+        file = fopen(path, "w");
+        if (file == NULL) {
+            perror("Erreur lors de la creation du fichier");
+            //TODO: close socket and push id to queue
+            exit(EXIT_FAILURE);
+        }
+        printf("Le fichier %s a ete cree\n", buffer->message);
 
-    while(1){
-        nb_recv = recv(dS_thread_upload, packet, BUFFER_SIZE, 0);
-        printf("nb_recv: %d\n", nb_recv);
+        // We receive the size of the file
+        nb_recv = recv(dS_thread_upload, &file_size, sizeof(long), 0);
         if (nb_recv == -1) {
-            perror("Erreur lors de la reception");
+            perror("Erreur lors de la reception upload client");
             exit(EXIT_FAILURE);
         }
         // If ever a client disconnect while we are receiving the messages
         if (nb_recv == 0) {
-            printf("Le client s'est deconnecte lors de upload de file\n");
-            break;
+            printf("Le client s'est deconnecte dans le file upload\n");
+            continue_thread = 0;
         }
-        nb_recv_total = nb_recv_total + nb_recv;
-        printf("nb_recv_total: %d\n", nb_recv_total);
-
-        // If the nb_recv_total is equal to the file_size, we stop the loop
-        /*
-        if (nb_recv_total >= file_size) {
-            break;
-        }
-        */
-        printf("message: %s\n", packet);
-        
-        // We write in the file
-        fwrite(packet, sizeof(char), nb_recv, file);
-        printf("writing in the file\n");
-    }
-    fclose(file);
-    printf("Le fichier a ete ferme\n");
     
-    /*
-    // We put the ThreadId in the queue
+    }
 
-    printf("avant lock upload %ld\n", ThreadId);
+    // Packet for the file data
+    char packet[BUFFER_SIZE];
+    int nb_recv_total = 0;
+    
+    if (continue_thread == 1){
+        while(1){
+            nb_recv = recv(dS_thread_upload, packet, BUFFER_SIZE, 0);
+            if (nb_recv == -1) {
+                perror("Erreur lors de la reception");
+                exit(EXIT_FAILURE);
+            }
+            // If ever a client disconnect while we are receiving the messages
+            if (nb_recv == 0) {
+                printf("Le client s'est deconnecte lors de upload de file\n");
+                break;
+            }
+            nb_recv_total = nb_recv_total + nb_recv;
+
+            
+            // If the nb_recv_total greater than the file_size, we stop the loop
+            if (nb_recv_total >= file_size + 1000) {
+                break;
+            }
+                    
+            // We write in the file
+            fwrite(packet, sizeof(char), nb_recv, file);
+        }
+        fclose(file);
+        printf("Le fichier a ete ferme\n");
+        printf("nb_recv total: %d\n", nb_recv_total);
+        printf("La taille du fichier est: %ld\n", file_size);
+    }
+
+    // We close the socket
+    close(dS_thread_upload);
+    
+    // We put the ThreadId in the queue
     // Lock the mutex
-    pthread_mutex_lock(&mutex_thread_queue);
-    enqueue(thread_queue, (unsigned long int) ThreadId);
+    pthread_mutex_lock(&mutex_disconnected_clients);
+    enqueue(disconnected_clients, ThreadId);
     // Unlock the mutex
-    pthread_mutex_unlock(&mutex_thread_queue);
+    pthread_mutex_unlock(&mutex_disconnected_clients);
 
     // We increment the semaphore
-    sem_post(&thread_end_upload_download);
-    printf("avant quitte upload\n");
-    */
+    sem_post(&thread_end);
 
+    printf("Thread upload termine\n");
     // We exit the thread
     pthread_exit(0);
 }
@@ -470,6 +464,7 @@ void * client_thread(void * dS_client_connection) {
     int i;
     int client_indice;
     int client_indice_connecting;
+    pthread_t ThreadId;
 
     // Variable that will allow us to know if we can continue the thread
     // This variable will be set to 0 if the client disconnects while he is giving his username
@@ -685,7 +680,6 @@ void * client_thread(void * dS_client_connection) {
             continue;
         }
 
-        printf("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n");
         // If the client sends "upload", we create a file in the /server_files directory
         // named after the name in buffer->message
         // Then we launch a thread to receive the file
@@ -700,7 +694,7 @@ void * client_thread(void * dS_client_connection) {
                 printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
                 exit(EXIT_FAILURE);
             }
-            printf("THREAD UPLOAD CREE\n");
+            printf("Thread upload cree\n");
            
             // We send a message to the other clients to tell them that this client has uploaded a file
             strcpy(buffer->cmd, "upload");
@@ -746,10 +740,19 @@ void * client_thread(void * dS_client_connection) {
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_username);
 
-    // We put the thread index in the shared queue of disconnected clients
+    // We get the thread id of the thread that is ending
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_Threads_id);
+    ThreadId = Threads_id[client_indice];
+    // Put 0 in the tab_thread_id array
+    Threads_id[client_indice] = 0;
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_Threads_id);
+
+    // We put the thread id in the shared queue of ended threads
     // Lock the mutex
     pthread_mutex_lock(&mutex_disconnected_clients);
-    enqueue(disconnected_clients, (unsigned long int) client_indice);
+    enqueue(disconnected_clients, ThreadId);
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_disconnected_clients);
 
@@ -764,94 +767,43 @@ void * client_thread(void * dS_client_connection) {
 
 
 
-
-
-
-
 /***************************************
-        Thread Cleanup Handlers
+        Thread Cleanup Handler
 ****************************************/
 
-// A function for a thread that will cleanup client threads
+// A function for a thread that will cleanup ended client threads
 // The thread that cleans up sleeps until a client thread ends
 // It checks a semaphore to see if a client thread has ended
 // If a client thread has ended, it joins the thread and cleans up the thread
-// It gets the index of the client thread that ended from the shared queue of disconnected clients
+// It gets the if of the thread that ended from the shared queue of ended threads
 
 void * cleanup(void * arg) {
 
     while (1) {
         sem_wait(&thread_end);
-        int thread_index;
-        // We get the index of the client thread that ended from the shared queue of disconnected clients
+        pthread_t thread_id;
+        // We get the id of the thread that ended from the shared queue of ended threads
         // Lock the mutex
         pthread_mutex_lock(&mutex_disconnected_clients);
-        thread_index = dequeue(disconnected_clients);
+        thread_id = dequeue(disconnected_clients);
         // Unlock the mutex
         pthread_mutex_unlock(&mutex_disconnected_clients);
-        if (thread_index == -1) {
-            perror("ERREUR CRITIQUE DEQUEUE");
-            exit(EXIT_FAILURE);
-        }
-        // We join the thread
-        // Lock the mutex
-        pthread_mutex_lock(&mutex_Threads_id);
-        printf("Thread %ld joined\n", Threads_id[thread_index]);
-        if (pthread_join(Threads_id[thread_index], NULL) == -1){
-            perror("Erreur lors du join d'un thread");
-        }
-        else{
-            printf("Thread %d joined\n", thread_index + 1);
-            Threads_id[thread_index] = 0;
-        }
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_Threads_id);
-    }
-
-    pthread_exit(0);
-}
-
-
-// A function for a thread that will clean up the upload and download threads
-// The thread that cleans up sleeps until a upload or download thread ends
-// It checks a semaphore to see if a upload or download thread has ended
-// If a upload or download thread has ended, it joins the thread and cleans up the thread
-// It gets the id of the upload or download thread that ended from the shared queue of ended upload or download threads
-
-void * cleanup_upload_download(void * arg) {
-
-    while (1) {
-        printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
-        sem_wait(&thread_end_upload_download);
-        pthread_t thread_id;
-        // We get the id of the upload or download thread that ended from the shared queue of ended upload or download threads
-        // Lock the mutex
-        printf("BBBBBBBBBBBBBBBBBBBb\n");
-        pthread_mutex_lock(&mutex_thread_queue);
-        thread_id = (pthread_t) dequeue(thread_queue);
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_thread_queue);
-        printf("CCCCCCCCCCCCCCC\n");
         if (thread_id == -1) {
             perror("ERREUR CRITIQUE DEQUEUE");
             exit(EXIT_FAILURE);
         }
-        // We join the thread
-        /*
-        printf("DDDDDDDDDDDDDDDDD\n");
-        printf("thread_id = %d\n", thread_id);
+        // We join the thread        
         if (pthread_join(thread_id, NULL) == -1){
             perror("Erreur lors du join d'un thread");
         }
         else{
-            printf("Thread upload %d joined\n", thread_id);
+            printf("Thread %ld joined\n", thread_id);
         }
-        */
-        printf("join thread simul\n");
     }
 
     pthread_exit(0);
 }
+
 
 
 /*********************************
@@ -975,25 +927,24 @@ int main(int argc, char *argv[]) {
   // Initialise the semaphores
   sem_init(&free_spot, 0, MAX_CLIENT);
   sem_init(&thread_end, 0, 0);
-  sem_init(&thread_end_upload_download, 0, 0);
+  //sem_init(&thread_end_upload_download, 0, 0);
 
   // Initialise the mutexes
   pthread_mutex_init(&mutex_tab_client_connecting, NULL);
   pthread_mutex_init(&mutex_tab_username, NULL);
   pthread_mutex_init(&mutex_disconnected_clients, NULL);
   pthread_mutex_init(&mutex_Threads_id, NULL);
-  pthread_mutex_init(&mutex_thread_queue, NULL);
+  //pthread_mutex_init(&mutex_thread_queue, NULL);
 
   // Initialise the shared queue of disconnected clients
   disconnected_clients = new_queue();
-  thread_queue = new_queue();
+  //thread_queue = new_queue();
 
   // Just in case, we want to know the address of each client
   struct sockaddr_in tab_adr[MAX_CLIENT];
   socklen_t tab_lg[MAX_CLIENT];
   pthread_t tid;
   pthread_t cleanup_tid;
-  pthread_t cleanup_upload_download_tid;
 
   // Launch the thread that will clean up client threads
   if (pthread_create(&cleanup_tid, NULL, cleanup, NULL) == -1) {
@@ -1001,13 +952,6 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
   printf("Thread de cleanup cree\n");
-
-  // Launch the thread that will cleanup upload and download threads
-    if (pthread_create(&cleanup_upload_download_tid, NULL, cleanup_upload_download, NULL) == -1) {
-        perror("Erreur lors de la creation du thread");
-        exit(EXIT_FAILURE);
-    }
-    printf("Thread de cleanup upload et download cree\n");
 
   // Acceptation de la connexion des clients
   printf("En attente de connexion des clients\n");
