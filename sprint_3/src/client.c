@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <time.h>
 
 // DOCUMENTATION
 // This program acts as a client which connects to a server
@@ -22,25 +23,31 @@
 // gcc -o client client.c
 
 // Use : ./client <server_ip> <server_port>
-
+//
 /*******************************************
             VARIABLES GLOBALES
 ********************************************/
 
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
 #define CMD_LENGTH 10 // taille maximal de la commande
-#define MSG_LENGTH 970 // taille maximal du message
+#define MSG_LENGTH 400 // taille maximal du message
 #define COLOR_LENGTH 10 // taille de la couleur
-#define BUFFER_SIZE PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
+#define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
 char *color; // couleur attribuée à l'utilisateur
+char *server_ip; // ip du serveur
+int server_port; // port du serveur  
+int nb_upload; // nombre de téléchargement en cours
+pthread_mutex_t mutex_upload; // mutex pour la variable nb_upload
+int nb_download; // nombre de téléchargement en cours
+pthread_mutex_t mutex_download; // mutex pour la variable nb_download
 
 // Struct for the messages
 typedef struct Message Message;
 struct Message {
     // The command
-    // Possible commands : "dm", "who", "fin", "list"
+    // Possible commands : "dm", "who", "fin", "list", "upload", "download", "endu", "endd"
     char cmd[CMD_LENGTH];
     // If the server is receiving the message:
         // If the commend is "dm", the username of the client to send the message to
@@ -52,7 +59,8 @@ struct Message {
         // If the command is "dm", username is who sent the message
         // If the command is "who", username is Server
         // If the command is "list", username is Server
-    char username[PSEUDO_LENGTH];
+    char from[PSEUDO_LENGTH];
+    char to[PSEUDO_LENGTH];
     // The message
     // If the server is receiving the message:
         // If the command is "fin", message is empty
@@ -75,7 +83,7 @@ struct Message {
 ********************************************/
 
 void *afficher(int color, char *msg, void *args){
-    /*  Fonction formatant l'affichage 
+    /*  Fonction formatant l'affichage
         color : couleur du texte
         msg : message à afficher
         args : arguments du message
@@ -100,21 +108,42 @@ void *afficher(int color, char *msg, void *args){
     //Remet le texte en normal
     printf("\033[0m");
     //Flush le buffer de stdout
-    fflush(stdout); 
+    fflush(stdout);
     return NULL;
 }
 
 
+
+void getCurrentTime(char* timeString, int maxBufferSize) {
+    time_t currentTime;
+    struct tm* timeInfo;
+
+    // Get the current time
+    time(&currentTime);
+
+    // Convert the current time to the local time
+    timeInfo = localtime(&currentTime);
+
+    // Format the time as a string
+    strftime(timeString, maxBufferSize, "%H:%M | ", timeInfo);
+}
+
+
+
+
 void print_message(Message *output){
-    char msg[BUFFER_SIZE + 40]; // car "mp de " fait 6 caracteres de plus
+    char msg[BUFFER_SIZE + 50]; // car "mp de " fait 6 caracteres de plus
     char color_message[COLOR_LENGTH];
+    char timeString[20];
     strcpy(color_message, output->color);
-    
     strcpy(msg, color_message);
+    // on met la date au debut du message
+    getCurrentTime(timeString, 20);
+    strcat(msg, timeString);
     if (strcmp(output->cmd, "dm") == 0){
         strcat(msg, "mp de ");
     }
-    strcat(msg, output->username);
+    strcat(msg, output->from);
     strcat(msg, " : ");
     strcat(msg, "\033[0m");
 
@@ -122,7 +151,7 @@ void print_message(Message *output){
     char* start = output->message;
     // Tant qu'on a pas atteint la fin du message
     // On cherche une mention parmis toutes les mentions
-    while (*start != '\0') { 
+    while (*start != '\0') {
         char* pos = strstr(start, "@");
         if (pos == NULL) {
             strcat(msg, start);
@@ -130,7 +159,7 @@ void print_message(Message *output){
         }
         // Copie la partie du message avant la mention
         // pos - start = longueur de la partie du message avant la mention
-        strncat(msg, start, pos - start); 
+        strncat(msg, start, pos - start);
         start = pos + 1;
         // Récupère le pseudo de la mention
         char* pseudo_start = start;
@@ -159,10 +188,158 @@ void print_message(Message *output){
 
 void print_dm_envoye(Message *output){
     char msg[BUFFER_SIZE + 20]; // car "mp envoye a " fait 13 caracteres de plus
-    sprintf(msg, "%s%s%s%s%s%s%s", color, "mp envoye a ", output->username, " : ", "\033[0m", output->message, "\n\0");
+    char timeString[20];
+    getCurrentTime(timeString, 20);
+    sprintf(msg, "%s%s%s%s%s%s%s%s", color, timeString, "mp envoye a ", output->to, " : ", "\033[0m", output->message, "\n\0");
     afficher(32, msg, NULL);
 }
 
+/*******************************************
+            THREADS DES FICHIERS
+********************************************/
+
+long get_file_size(FILE *file) {
+    long size;
+    fseek(file, 0, SEEK_END);  // Déplace le curseur à la fin du fichier
+    size = ftell(file);        // Récupère la position actuelle du curseur (qui est la taille du fichier)
+    rewind(file);              // Remet le curseur au début du fichier
+    return size;
+}
+
+/***************** UPLOAD ******************/
+
+
+void *upload_file(void* param){
+    // Fonction qui envoie un fichier au serveur (thread)
+    // On utilise un thread pour pouvoir envoyer un message au serveur pendant l'envoi du fichier
+
+    struct upload_param {
+        char *filename;
+        FILE *file;
+    };
+    struct upload_param param_upload = *(struct upload_param*) param;
+    char *filename = param_upload.filename;
+
+    FILE *fichier = (FILE*) param_upload.file;
+    if (fichier == NULL){
+        afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
+        pthread_exit(0);
+    }
+
+
+
+    long size_file = 0;
+    size_file = get_file_size(fichier);
+    //printf("Taille du fichier : %ld\n", size_file);
+
+    Message *request = malloc(sizeof(Message));
+
+    int dS = socket(AF_INET, SOCK_STREAM, 0);
+    if (dS == -1) {
+        perror("Erreur lors de la creation de la socket");
+        exit(EXIT_FAILURE);
+    }
+
+    //printf("Socket Créé\n");
+    struct sockaddr_in aS;
+
+    aS.sin_family = AF_INET;
+    int result = inet_pton(AF_INET, server_ip, &(aS.sin_addr));
+    if (result == 0) {
+        fprintf(stderr, "Invalid address\n");
+        exit(EXIT_FAILURE);
+    } else if (result == -1) {
+        perror("inet_pton");
+        exit(EXIT_FAILURE);
+    }
+
+    aS.sin_port = htons(server_port + 1); // +1 pour le port d'upload du fichier
+    socklen_t lgA = sizeof(struct sockaddr_in) ;
+    if (connect(dS, (struct sockaddr *) &aS, lgA) == -1) {
+        perror("Erreur connect client");
+        exit(EXIT_FAILURE);
+    }
+
+    //printf("Socket Connecté\n");
+    // Formatage du message
+    strcpy(request->cmd, "upload");
+    strcpy(request->from, pseudo);
+    strcpy(request->to, "server");
+    strcpy(request->message, filename);
+    strcpy(request->color, color);
+
+    // Envoie le nom du fichier au serveur
+    //printf("Envoie du nom du fichier au serveur\n");
+    int nb_send = send(dS, request, BUFFER_SIZE, 0);
+    if (nb_send == -1) {
+        perror("Erreur lors de l'envoi du message");
+        close(dS);
+        exit(EXIT_FAILURE);
+    } else if (nb_send == 0) {
+        // Connection fermée par le client ou le serveur
+        afficher(31, "Le serveur a ferme la connexion\n", NULL);
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
+
+
+    // Envoie la taille du fichier au serveur
+    //printf("Envoie de la taille du fichier au serveur\n");
+    nb_send = send(dS, &size_file, sizeof(long), 0);
+    if (nb_send == -1) {
+        perror("Erreur lors de l'envoi du message");
+        close(dS);
+        exit(EXIT_FAILURE);
+    } else if (nb_send == 0) {
+        // Connection fermée par le client ou le serveur
+        afficher(31, "Le serveur a ferme la connexion\n", NULL);
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
+
+
+    char buffer[BUFFER_SIZE];
+    int nb_read_total = 0;
+    int nb_read = 0;
+    //printf("Envoie du fichier au serveur\n");
+    // Envoie le fichier au serveur
+    while(nb_read_total < size_file){
+        nb_read = fread(buffer, 1, BUFFER_SIZE, fichier);
+        nb_read_total += nb_read;
+        // ajouter /0 a la fin du buffer si le fichier est plus petit que BUFFER_SIZE
+        if (nb_read < BUFFER_SIZE){ // inutile mais pour un code robuste
+            buffer[nb_read] = '\0';
+        }
+        //printf("Taille du fichier : %ld, Taille lu: %d\n, Taille lu total:%d\n", size_file, nb_read, nb_read_total);
+        if (nb_read < BUFFER_SIZE){
+            nb_send = send(dS, buffer, nb_read, 0);
+        }else{
+            nb_send = send(dS, buffer, BUFFER_SIZE, 0);
+        }
+        //printf("Taille envoye: %d\n", nb_send);
+        //printf("Message envoye: %s\n", buffer);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi du message");
+            close(dS);
+            exit(EXIT_FAILURE);
+        } else if (nb_send == 0) {
+            // Connection fermée par le client ou le serveur
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(dS);
+            exit(EXIT_FAILURE);
+        }
+        bzero(buffer, BUFFER_SIZE);
+    }
+
+
+    //printf("Fermeture de la socket\n");
+    fclose(fichier);
+    close(dS);
+    //printf("Fichier fermé\n");
+    free(request);
+    //printf("Fichier envoyé\n");
+    pthread_exit(0);
+}
 
 
 /*******************************************
@@ -194,11 +371,9 @@ void *readMessage(void *arg) {
             // Connection closed by client or server
             break;
         }
-        
 
 
-        print_message(response);  
-        
+        print_message(response);
     }
 
     free(response);
@@ -211,7 +386,7 @@ void *readMessage(void *arg) {
 void *writeMessage(void *arg) {
     /*  Fonction qui envoie les messages au serveur
         arg : socket du serveur
-    */ 
+    */
 
     int dS = *(int *)arg;
     int nb_send;
@@ -226,13 +401,13 @@ void *writeMessage(void *arg) {
         do{
             fgets(input, MSG_LENGTH, stdin);
             char *pos = strchr(input, '\n');
-            if (pos != NULL){        
+            if (pos != NULL){
                 *pos = '\0';
             }
             //Remonte le curseur d'une ligne
             printf("\033[1A");
 
-            if (strlen(input) <= 0){ 
+            if (strlen(input) <= 0){
                 afficher(31, "", NULL);}
 
         } while(strlen(input) <= 0);
@@ -256,7 +431,8 @@ void *writeMessage(void *arg) {
 
         // Formatage du message
         strcpy(request->cmd, "");
-        strcpy(request->username, pseudo);
+        strcpy(request->from, pseudo);
+        strcpy(request->to, "all");
         strcpy(request->message, input);
         strcpy(request->color, color);
 
@@ -265,7 +441,6 @@ void *writeMessage(void *arg) {
         if (strcmp(input, "/fin") == 0){
             strcpy(request->cmd, "fin");
         }
-
 
         if (strcmp(input, "/who") == 0){
             strcpy(request->cmd, "who");
@@ -285,7 +460,7 @@ void *writeMessage(void *arg) {
                 afficher(31, "Erreur : veuillez entrer un pseudo\n  /mp <pseudo> <message>\n", NULL);
                 continue;
             }
-            strcpy(request->username, traitement);
+            strcpy(request->to, traitement);
             traitement = strtok(NULL, "\0");
             if (traitement == NULL){
                 afficher(31, "Erreur : veuillez entrer un message\n  /mp <pseudo> <message>\n", NULL);
@@ -294,7 +469,43 @@ void *writeMessage(void *arg) {
             strcpy(request->message, traitement);
         }
 
-        
+        // Si l'input est "/upload fichier" envoie "upload" au server
+        if (strcmp(traitement, "/upload") == 0){
+            strcpy(request->cmd, "upload");
+            traitement = strtok(NULL, " ");
+            if (traitement == NULL){
+                afficher(31, "Erreur : veuillez entrer un nom de fichier\n  /upload <fichier>\n", NULL);
+                continue;
+            }
+            strcpy(request->message, "Envoie du fichier au serveur");
+
+            // Ouverture du fichier
+            FILE *fichier = NULL;
+            fichier = fopen(traitement, "r");
+            if (fichier == NULL){
+                afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
+                continue;
+            }
+
+            pthread_t uploadThread;
+
+            //parametre du thread : nom du fichier et fichier
+            struct upload_param {
+                char *filename;
+                FILE *file;
+            } param;
+            param.filename = traitement;
+            param.file = fichier;
+
+            if (pthread_create(&uploadThread, NULL, upload_file, &param) != 0) {
+                perror("Erreur lors de la creation du thread de lecture");
+                close(dS);
+                exit(EXIT_FAILURE);
+            }
+            
+        }
+
+
 
         // Envoie le message au serveur
         nb_send = send(dS, request, BUFFER_SIZE, 0);
@@ -330,6 +541,8 @@ void *writeMessage(void *arg) {
 }
 
 
+
+
 /*******************************************
             GESTIONS DES SIGNAUX
 ********************************************/
@@ -354,9 +567,12 @@ int main(int argc, char *argv[]) {
                 Usage: %s <server_ip> <server_port>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    server_ip = argv[1];
+    server_port = atoi(argv[2]);
+
 
     printf("\033[2J"); //Clear the screen
-    
+
 
     // Choisi une couleur random pour le client parmis les 11 couleurs disponibles dans array_color et stocke le pointeur dans color
     srand(time(NULL));
@@ -376,16 +592,16 @@ int main(int argc, char *argv[]) {
     // Voici la doc des structs utilisées
     /*
     struct sockaddr_in {
-        sa_family_t    sin_family;  famille d'adresses : AF_INET     
+        sa_family_t    sin_family;  famille d'adresses : AF_INET
         uint16_t       sin_port;    port dans l'ordre d'octets réseau
-        struct in_addr sin_addr;    adresse Internet                 
+        struct in_addr sin_addr;    adresse Internet
     };
     */
 
     struct sockaddr_in aS;
 
     aS.sin_family = AF_INET;
-    int result = inet_pton(AF_INET,argv[1],&(aS.sin_addr));
+    int result = inet_pton(AF_INET, server_ip, &(aS.sin_addr));
     if (result == 0) {
         fprintf(stderr, "Invalid address\n");
         exit(EXIT_FAILURE);
@@ -397,10 +613,10 @@ int main(int argc, char *argv[]) {
     /*
         Adresse Internet
         struct in_addr {
-            uint32_t    s_addr;   Adresse dans l'ordre d'octets réseau 
+            uint32_t    s_addr;   Adresse dans l'ordre d'octets réseau
         };
     */
-    aS.sin_port = htons(atoi(argv[2])) ;
+    aS.sin_port = htons(server_port);
     socklen_t lgA = sizeof(struct sockaddr_in) ;
     if (connect(dS, (struct sockaddr *) &aS, lgA) == -1) {
         perror("Erreur connect client");
@@ -416,11 +632,11 @@ int main(int argc, char *argv[]) {
 
     // Demande le pseudo
     printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 1);
-    do{ 
+    do{
         do {
             fgets(pseudo, PSEUDO_LENGTH, stdin);
             char *pos = strchr(pseudo, '\n');
-            if (pos != NULL){        
+            if (pos != NULL){
                 *pos = '\0';
             }
             // vider le buffer lorque le pseudo est trop long
@@ -436,12 +652,13 @@ int main(int argc, char *argv[]) {
                 strcpy(pseudo, "");
             }
         } while (strlen(pseudo) < 3 || strlen(pseudo) >= PSEUDO_LENGTH - 1);
-        
+
         printf("Vous avez choisi le pseudo : %s\n", pseudo);
 
         // Preparation du request
         strcpy(request -> cmd, "");
-        strcpy(request -> username, pseudo);
+        strcpy(request -> from, pseudo);
+        strcpy(request -> to, "server");
         strcpy(request -> message, "");
         strcpy(request -> color, color);
 
