@@ -194,6 +194,13 @@ void print_dm_envoye(Message *output){
             THREADS DES FICHIERS
 ********************************************/
 
+long get_file_size(FILE *file) {
+    long size;
+    fseek(file, 0, SEEK_END);  // Déplace le curseur à la fin du fichier
+    size = ftell(file);        // Récupère la position actuelle du curseur (qui est la taille du fichier)
+    rewind(file);              // Remet le curseur au début du fichier
+    return size;
+}
 
 /***************** UPLOAD ******************/
 
@@ -208,6 +215,10 @@ void *upload_file(void* filename){
         afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
         pthread_exit(0);
     }
+
+    long size_file = 0;
+    size_file = get_file_size(fichier);
+    printf("Taille du fichier : %ld\n", size_file);
 
     Message *request = malloc(sizeof(Message));
 
@@ -259,33 +270,10 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
-    printf("Envoie du fichier au serveur\n");
-    // Envoie le fichier au serveur
-    while(fgets(request->message, MSG_LENGTH, fichier) != NULL) {
-        nb_send = send(dS, request, BUFFER_SIZE, 0);
-        printf("Taille envoye: %d\n", nb_send);
-        printf("Commande envoye: %s\n", request->cmd);
-        printf("Message envoye: %s\n", request->message);
-        if (nb_send == -1) {
-            perror("Erreur lors de l'envoi du message");
-            close(dS);
-            exit(EXIT_FAILURE);
-        } else if (nb_send == 0) {
-            // Connection fermée par le client ou le serveur
-            afficher(31, "Le serveur a ferme la connexion\n", NULL);
-            close(dS);
-            exit(EXIT_FAILURE);
-        }
-        bzero(request->message, MSG_LENGTH);
-        sleep(1);
-    }
 
-    strcpy(request->cmd, "endu");
-
-    printf("Envoie du message de fin d'upload au serveur\n");
-    // Envoie un message vide pour prevenir le serveur que le fichier est fini
-    nb_send = send(dS, request, BUFFER_SIZE, 0);
-    printf("Message envoye: %d\n", nb_send);
+    // Envoie la taille du fichier au serveur
+    printf("Envoie de la taille du fichier au serveur\n");
+    nb_send = send(dS, &size_file, sizeof(long), 0);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
         close(dS);
@@ -297,9 +285,47 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
+
+    char buffer[BUFFER_SIZE];
+    int nb_read_total = 0;
+    int nb_read = 0;
+    printf("Envoie du fichier au serveur\n");
+    // Envoie le fichier au serveur
+    while(nb_read_total < size_file){
+        nb_read = fread(buffer, 1, BUFFER_SIZE, fichier);
+        nb_read_total += nb_read;
+        // ajouter /0 a la fin du buffer si le fichier est plus petit que BUFFER_SIZE
+        if (nb_read < BUFFER_SIZE){
+            buffer[nb_read] = '\0';
+        }
+        printf("Taille du fichier : %ld, Taille lu: %d\n, Taille lu total:%d\n", size_file, nb_read, nb_read_total);
+        if (nb_read < BUFFER_SIZE){
+            nb_send = send(dS, buffer, nb_read, 0);
+        }else{
+            nb_send = send(dS, buffer, BUFFER_SIZE, 0);
+        }
+        printf("Taille envoye: %d\n", nb_send);
+        printf("Message envoye: %s\n", buffer);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi du message");
+            close(dS);
+            exit(EXIT_FAILURE);
+        } else if (nb_send == 0) {
+            // Connection fermée par le client ou le serveur
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(dS);
+            exit(EXIT_FAILURE);
+        }
+        bzero(buffer, BUFFER_SIZE);
+    }
+
+
     printf("Fermeture de la socket\n");
     fclose(fichier);
+    close(dS);
+    printf("Fichier fermé\n");
     free(request);
+    printf("Fichier envoyé\n");
     pthread_exit(0);
 }
 
