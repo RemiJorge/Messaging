@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <time.h>
 
 // DOCUMENTATION
 // This program acts as a server to relay messages between multiple clients
@@ -30,7 +31,7 @@ typedef struct Queue Queue;
 typedef struct Element Element;
 
 struct Element{
-    int number;
+    pthread_t number;
     Element *next;
 };
 
@@ -50,7 +51,7 @@ Queue * new_queue(){
 }
 
 // Adds an element to the queue
-void enqueue(Queue * q, int number){
+void enqueue(Queue * q, pthread_t number){
     Element * e = malloc(sizeof(Element));
     e->number = number;
     e->next = NULL;
@@ -68,13 +69,13 @@ void enqueue(Queue * q, int number){
 
 // Removes the first element of the queue and returns it
 // If the queue is empty, returns -1
-int dequeue(Queue * q){
+pthread_t dequeue(Queue * q){
     if(q->premier == NULL){
         return -1;
     }else{
         Element * e = q->premier;
         q->premier = e->next;
-        int number = e->number;
+        pthread_t number = e->number;
         free(e);
         q->count--;
         return number;
@@ -101,11 +102,11 @@ int dequeue(Queue * q){
 // Size of commands
 #define CMD_SIZE 10
 // Size of the message
-#define MSG_SIZE 970
+#define MSG_SIZE 960
 // Size of color
 #define COLOR_SIZE 10
 // Buffer size for messages (this is the total size of the message)
-#define BUFFER_SIZE USERNAME_SIZE + CMD_SIZE + MSG_SIZE + COLOR_SIZE
+#define BUFFER_SIZE USERNAME_SIZE + USERNAME_SIZE + CMD_SIZE + MSG_SIZE + COLOR_SIZE
 
 // Array of socket descriptors for the clients that are trying to connect
 // The clients that will be in this array are clients
@@ -133,6 +134,18 @@ pthread_mutex_t mutex_tab_username;
 // A semaphore to indicate the number of free spots in the tab_client array
 sem_t free_spot;
 
+// The socket descriptor for the socket that deals with file uploads
+int upload_socket;
+
+// Mutex to protect the upload_socket
+pthread_mutex_t mutex_upload_socket;
+
+// The socket descriptor for the socket that deals with file downloads
+int download_socket;
+
+// Mutex to protect the download_socket
+pthread_mutex_t mutex_download_socket;
+
 
 /**************************************
       Shared variables for threads
@@ -152,6 +165,17 @@ Queue * disconnected_clients;
 
 // Mutex to protect the disconnected_clients queue
 pthread_mutex_t mutex_disconnected_clients;
+
+/*
+// A shared queue to store the ids of threads that have ended for upload and download
+Queue * thread_queue;
+
+// Mutex to protect the thread_queue queue
+pthread_mutex_t mutex_thread_queue;
+
+// A semaphore to indicate when a thread has ended for upload and download
+sem_t thread_end_upload_download;
+*/
 
 /**************************************
            Utility functions
@@ -246,19 +270,14 @@ int get_free_spot() {
 typedef struct Message Message;
 struct Message {
     // The command
-    // Possible commands : "dm", "who", "fin", "list"
+    // Possible commands : "dm", "who", "fin", "list", "upload", "download"
     char cmd[CMD_SIZE];
-    // If the server is receiving the message:
-        // If the command is "dm", the username of the client to send the message to
-        // If the command is "who", username is empty
-        // If the command is "fin", username is empty
-        // If the command is "list", username is empty
-        // If the client is trying to connect, username is the username of the client
-    // If the server is sending the message:
-        // If the command is "dm", username is who sent the message
-        // If the command is "who", username is Server
-        // If the command is "list", username is Server
-    char username[USERNAME_SIZE];
+    // The username of the client who will receive the message
+    // It can be Server if the message is sent from the server
+    char from[USERNAME_SIZE];
+    // The username of the client who sent the message
+    // It can be Server if the message is sent to the server
+    char to[USERNAME_SIZE];
     // The message
     // If the server is receiving the message:
         // If the command is "fin", message is empty
@@ -284,7 +303,7 @@ void send_to_all(int client_indice, Message * buffer) {
     int nb_send;
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_username);
-    strcpy(buffer->username, tab_username[client_indice]);
+    strcpy(buffer->from, tab_username[client_indice]);
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_username);
     // Lock the mutex
@@ -312,6 +331,126 @@ void send_to_all(int client_indice, Message * buffer) {
 }
 
 
+// A function for a thread that will accept a connection using the socket 
+// for uploads and will create and receive the file and write in the file
+
+void * upload_file_thread(void * arg){
+    int nb_recv; // The number of bytes received
+    Message msg_buffer; // The buffer for the messages
+    Message * buffer = &msg_buffer; // A pointer to the buffer
+    int dS_thread_upload; // The socket for the upload for the accept
+    int continue_thread = 1; // A variable to know if we continue the thread or not
+    long file_size; // The size of the file
+    char path[MSG_SIZE]; // The path of the file
+    FILE * file; // The file
+
+    pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
+
+    // Initialise file_addr and length
+    struct sockaddr_in file_addr;
+    socklen_t length_file_addr;
+
+    // We accept the connection
+    length_file_addr = sizeof(struct sockaddr_in);
+    dS_thread_upload = accept(upload_socket, (struct sockaddr*) &file_addr,&length_file_addr) ;
+    if (dS_thread_upload == -1) {
+        perror("Erreur lors de l'accept");
+        exit(EXIT_FAILURE);
+    }
+
+    // We receive the name of the file
+    nb_recv = recv(dS_thread_upload, buffer, BUFFER_SIZE, 0);
+    if (nb_recv == -1) {
+        perror("Erreur lors de la reception upload client");
+        exit(EXIT_FAILURE);
+    }
+    // If ever a client disconnect while we are receiving the messages
+    if (nb_recv == 0) {
+        printf("Le client s'est deconnecte dans le file upload\n");
+        continue_thread = 0;
+    }
+
+
+    if (continue_thread == 1){
+        printf("Le nom du fichier est: %s\n", buffer->message);
+
+        // We create the file
+        strcpy(path, "server_files/");
+        strcat(path, buffer->message);
+        file = fopen(path, "w");
+        if (file == NULL) {
+            perror("Erreur lors de la creation du fichier");
+            //TODO: close socket and push id to queue
+            exit(EXIT_FAILURE);
+        }
+        printf("Le fichier %s a ete cree\n", buffer->message);
+
+        // We receive the size of the file
+        nb_recv = recv(dS_thread_upload, &file_size, sizeof(long), 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception upload client");
+            exit(EXIT_FAILURE);
+        }
+        // If ever a client disconnect while we are receiving the messages
+        if (nb_recv == 0) {
+            printf("Le client s'est deconnecte dans le file upload\n");
+            continue_thread = 0;
+        }
+    
+    }
+
+    // Packet for the file data
+    char packet[BUFFER_SIZE];
+    int nb_recv_total = 0;
+    
+    if (continue_thread == 1){
+        while(1){
+            nb_recv = recv(dS_thread_upload, packet, BUFFER_SIZE, 0);
+            if (nb_recv == -1) {
+                perror("Erreur lors de la reception");
+                exit(EXIT_FAILURE);
+            }
+            // If ever a client disconnect while we are receiving the messages
+            if (nb_recv == 0) {
+                printf("Le client s'est deconnecte lors de upload de file\n");
+                break;
+            }
+            nb_recv_total = nb_recv_total + nb_recv;
+
+            
+            // If the nb_recv_total greater than the file_size, we stop the loop
+            if (nb_recv_total >= file_size + 1000) {
+                break;
+            }
+                    
+            // We write in the file
+            fwrite(packet, sizeof(char), nb_recv, file);
+        }
+        fclose(file);
+        printf("Le fichier a ete ferme\n");
+        printf("nb_recv total: %d\n", nb_recv_total);
+        printf("La taille du fichier est: %ld\n", file_size);
+    }
+
+    // We close the socket
+    close(dS_thread_upload);
+    
+    // We put the ThreadId in the queue
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_disconnected_clients);
+    enqueue(disconnected_clients, ThreadId);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_disconnected_clients);
+
+    // We increment the semaphore
+    sem_post(&thread_end);
+
+    printf("Thread upload termine\n");
+    // We exit the thread
+    pthread_exit(0);
+}
+
+
 // A function for a thread that will take as an argument
 // the socket descriptor of the client, and will receive messages
 // from the client and redirect them to the right client/s
@@ -325,6 +464,7 @@ void * client_thread(void * dS_client_connection) {
     int i;
     int client_indice;
     int client_indice_connecting;
+    pthread_t ThreadId;
 
     // Variable that will allow us to know if we can continue the thread
     // This variable will be set to 0 if the client disconnects while he is giving his username
@@ -366,7 +506,7 @@ void * client_thread(void * dS_client_connection) {
         // We check if the username is unique
         // If it is, we put the client in the tab_client array
         // If it is not, we send him false and he has to send another username
-        if (get_indice_username(buffer->username) == -1) {
+        if (get_indice_username(buffer->from) == -1) {
             // We put the client in the tab_client array
             // Lock the mutex because we are going to write in the tab_client array
             pthread_mutex_lock(&mutex_tab_client);
@@ -376,11 +516,12 @@ void * client_thread(void * dS_client_connection) {
             // We put the username in the tab_username array
             // Lock the mutex because we are going to write in the tab_username array
             pthread_mutex_lock(&mutex_tab_username);
-            strcpy(tab_username[client_indice_connecting], buffer->username);
+            strcpy(tab_username[client_indice_connecting], buffer->from);
             // Unlock the mutex
             pthread_mutex_unlock(&mutex_tab_username);
             // We send true to the client
-            strcpy(buffer->username, "Server");
+            strcpy(buffer->to, buffer->from);
+            strcpy(buffer->from, "Server");
             strcpy(buffer->message, "true");
             nb_send = send(dSC_connection, buffer, BUFFER_SIZE, 0);
             if (nb_send == -1) {
@@ -392,7 +533,8 @@ void * client_thread(void * dS_client_connection) {
         } 
         else {
             // We send false to the client
-            strcpy(buffer->username, "Server");
+            strcpy(buffer->to, buffer->from);
+            strcpy(buffer->from, "Server");
             strcpy(buffer->message, "false");
             nb_send = send(dSC_connection, buffer, BUFFER_SIZE, 0);
             if (nb_send == -1) {
@@ -419,7 +561,8 @@ void * client_thread(void * dS_client_connection) {
         // We tell the other clients that a new client has connected
         // Lock the mutex
         pthread_mutex_lock(&mutex_tab_username);
-        strcpy(buffer->username, tab_username[client_indice]);
+        strcpy(buffer->from, tab_username[client_indice]);
+        strcpy(buffer->to, "all");
         // Unlock the mutex
         pthread_mutex_unlock(&mutex_tab_username);
         strcpy(buffer->message, "Je me connecte. Bonjour!");
@@ -456,7 +599,8 @@ void * client_thread(void * dS_client_connection) {
 
         // If the client sends "list", we send him the list of the connected clients
         if (strcmp(buffer->cmd, "list") == 0) {
-            strcpy(buffer->username, "Serveur");
+            strcpy(buffer->to, buffer->from);
+            strcpy(buffer->from, "Serveur");
             strcpy(buffer->cmd, "list");
             char list[MSG_SIZE];
             strcpy(list, "Liste des clients connectes: \n");
@@ -486,11 +630,12 @@ void * client_thread(void * dS_client_connection) {
 
         // If the client sends "who", we send him his username
         if (strcmp(buffer->cmd, "who") == 0) {
-            strcpy(buffer->username, "Serveur");
+            strcpy(buffer->from, "Serveur");
             strcpy(buffer->cmd, "who");
             // Lock the mutex
             pthread_mutex_lock(&mutex_tab_username);
             strcpy(buffer->message, tab_username[client_indice]);
+            strcpy(buffer->to, tab_username[client_indice]);
             // Unlock the mutex
             pthread_mutex_unlock(&mutex_tab_username);
             nb_send = send(dSC, buffer, BUFFER_SIZE, 0);
@@ -505,10 +650,11 @@ void * client_thread(void * dS_client_connection) {
         // If the client sends "dm", we send the message to the person who's username is in buffer.username
         if (strcmp(buffer->cmd, "dm") == 0) {
             // We get the indice of the client to send the message to
-            int client_to_send = get_indice_username(buffer->username);
+            int client_to_send = get_indice_username(buffer->to);
             // If the client is not in the array, we send an error message to the client
             if (client_to_send == -1) {
-                strcpy(buffer->username, "Serveur");
+                strcpy(buffer->to, buffer->from);
+                strcpy(buffer->from, "Serveur");
                 strcpy(buffer->cmd, "error");
                 strcpy(buffer->message, "Le client n'existe pas");
                 nb_send = send(dSC, buffer, BUFFER_SIZE, 0);
@@ -522,11 +668,10 @@ void * client_thread(void * dS_client_connection) {
             // If the client is in the array, we send him the message
             strcpy(buffer->cmd, "dm");
             // Lock the mutex
-            pthread_mutex_lock(&mutex_tab_username);
-            strcpy(buffer->username, tab_username[client_indice]);
+            pthread_mutex_lock(&mutex_tab_client);
             nb_send = send(tab_client[client_to_send], buffer, BUFFER_SIZE, 0);
             // Unlock the mutex
-            pthread_mutex_unlock(&mutex_tab_username);
+            pthread_mutex_unlock(&mutex_tab_client);
             if (nb_send == -1) {
                 perror("Erreur lors de l'envoi");
                 printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
@@ -535,10 +680,32 @@ void * client_thread(void * dS_client_connection) {
             continue;
         }
 
+        // If the client sends "upload", we create a file in the /server_files directory
+        // named after the name in buffer->message
+        // Then we launch a thread to receive the file
+        if (strcmp(buffer->cmd, "upload") == 0) {
+            printf("UPLOAD detected\n");
+
+            // We launch a thread to receive the file
+            pthread_t thread_upload;
+
+            if (pthread_create(&thread_upload, NULL, upload_file_thread, NULL) != 0) {
+                perror("Erreur lors de la creation du thread");
+                printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
+                exit(EXIT_FAILURE);
+            }
+            printf("Thread upload cree\n");
+           
+            // We send a message to the other clients to tell them that this client has uploaded a file
+            strcpy(buffer->cmd, "upload");
+            strcpy(buffer->message, "I am uploading a file!");
+            send_to_all(client_indice, buffer);
+            continue;
+        }
+
 
         // By default, we send the message to all the clients connected,
         // using the function send_to_all
-        
         send_to_all(client_indice, buffer);
         
     }
@@ -573,10 +740,19 @@ void * client_thread(void * dS_client_connection) {
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_username);
 
-    // We put the thread index in the shared queue of disconnected clients
+    // We get the thread id of the thread that is ending
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_Threads_id);
+    ThreadId = Threads_id[client_indice];
+    // Put 0 in the tab_thread_id array
+    Threads_id[client_indice] = 0;
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_Threads_id);
+
+    // We put the thread id in the shared queue of ended threads
     // Lock the mutex
     pthread_mutex_lock(&mutex_disconnected_clients);
-    enqueue(disconnected_clients, client_indice);
+    enqueue(disconnected_clients, ThreadId);
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_disconnected_clients);
 
@@ -589,43 +765,40 @@ void * client_thread(void * dS_client_connection) {
 }
 
 
+
+
 /***************************************
         Thread Cleanup Handler
 ****************************************/
 
-// A function for a thread that will cleanup client threads
+// A function for a thread that will cleanup ended client threads
 // The thread that cleans up sleeps until a client thread ends
 // It checks a semaphore to see if a client thread has ended
 // If a client thread has ended, it joins the thread and cleans up the thread
-// It gets the index of the client thread that ended from the shared queue of disconnected clients
+// It gets the if of the thread that ended from the shared queue of ended threads
 
 void * cleanup(void * arg) {
 
     while (1) {
         sem_wait(&thread_end);
-        int thread_index;
-        // We get the index of the client thread that ended from the shared queue of disconnected clients
+        pthread_t thread_id;
+        // We get the id of the thread that ended from the shared queue of ended threads
         // Lock the mutex
         pthread_mutex_lock(&mutex_disconnected_clients);
-        thread_index = dequeue(disconnected_clients);
+        thread_id = dequeue(disconnected_clients);
         // Unlock the mutex
         pthread_mutex_unlock(&mutex_disconnected_clients);
-        if (thread_index == -1) {
+        if (thread_id == -1) {
             perror("ERREUR CRITIQUE DEQUEUE");
             exit(EXIT_FAILURE);
         }
-        // We join the thread
-        // Lock the mutex
-        pthread_mutex_lock(&mutex_Threads_id);
-        if (pthread_join(Threads_id[thread_index], NULL) == -1){
+        // We join the thread        
+        if (pthread_join(thread_id, NULL) == -1){
             perror("Erreur lors du join d'un thread");
         }
         else{
-            printf("Thread %d joined\n", thread_index + 1);
-            Threads_id[thread_index] = 0;
+            printf("Thread %ld joined\n", thread_id);
         }
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_Threads_id);
     }
 
     pthread_exit(0);
@@ -657,6 +830,20 @@ int main(int argc, char *argv[]) {
   }
   printf("Socket cree\n");
 
+
+  upload_socket = socket(PF_INET, SOCK_STREAM, 0);
+  if(upload_socket == -1) {
+    perror("Erreur lors de la creation du socket");
+    exit(EXIT_FAILURE);
+  }
+  printf("Socket cree\n");
+
+  download_socket = socket(PF_INET, SOCK_STREAM, 0);
+  if(download_socket == -1) {
+    perror("Erreur lors de la creation du socket");
+    exit(EXIT_FAILURE);
+  }
+
   // Voici la doc des structs utilises
   /*
   struct sockaddr_in {
@@ -673,23 +860,55 @@ int main(int argc, char *argv[]) {
 
   // Nommage
 
-  struct sockaddr_in ad;
-  ad.sin_family = AF_INET;
-  ad.sin_addr.s_addr = INADDR_ANY ;
-  ad.sin_port = htons(atoi(argv[1])) ;
-  if(bind(dS, (struct sockaddr*)&ad, sizeof(ad)) == -1) {
-    perror("Erreur lors du nommage du socket");
-    exit(EXIT_FAILURE);
-  }
-  printf("Socket nomme\n");
+    struct sockaddr_in ad;
+    ad.sin_family = AF_INET;
+    ad.sin_addr.s_addr = INADDR_ANY ;
+    ad.sin_port = htons(atoi(argv[1])) ;
+    if(bind(dS, (struct sockaddr*)&ad, sizeof(ad)) == -1) {
+        perror("Erreur lors du nommage du socket");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket message nomme\n");
+
+    struct sockaddr_in ad_upload;
+    ad_upload.sin_family = AF_INET;
+    ad_upload.sin_addr.s_addr = INADDR_ANY ;
+    ad_upload.sin_port = htons(atoi(argv[1]) + 1) ;
+    if(bind(upload_socket, (struct sockaddr*)&ad_upload, sizeof(ad_upload)) == -1) {
+        perror("Erreur lors du nommage du socket");
+        exit(EXIT_FAILURE);
+    }
+        printf("Socket upload nomme\n");
+
+    struct sockaddr_in ad_download;
+    ad_download.sin_family = AF_INET;
+    ad_download.sin_addr.s_addr = INADDR_ANY ;
+    ad_download.sin_port = htons(atoi(argv[1]) + 2) ;
+    if(bind(download_socket, (struct sockaddr*)&ad_download, sizeof(ad_download)) == -1) {
+        perror("Erreur lors du nommage du socket");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket download nomme\n");
 
   // Ecoute
 
-  if(listen(dS, 10) == -1) {
-    perror("Erreur lors du passage en mode ecoute");
-    exit(EXIT_FAILURE);
-  }
-  printf("Mode ecoute\n");
+    if(listen(dS, 10) == -1) {
+        perror("Erreur lors du passage en mode ecoute");
+        exit(EXIT_FAILURE);
+    }
+    printf("Mode ecoute message\n");
+
+    if(listen(upload_socket, 10) == -1) {
+        perror("Erreur lors du passage en mode ecoute");
+        exit(EXIT_FAILURE);
+    }
+    printf("Mode ecoute upload\n");
+
+    if(listen(download_socket, 10) == -1) {
+        perror("Erreur lors du passage en mode ecoute");
+        exit(EXIT_FAILURE);
+    }
+    printf("Mode ecoute download\n");
 
   // We put zeros in the arrays to show that the clients are not connected
   // and that the threads are not created
@@ -708,9 +927,18 @@ int main(int argc, char *argv[]) {
   // Initialise the semaphores
   sem_init(&free_spot, 0, MAX_CLIENT);
   sem_init(&thread_end, 0, 0);
+  //sem_init(&thread_end_upload_download, 0, 0);
+
+  // Initialise the mutexes
+  pthread_mutex_init(&mutex_tab_client_connecting, NULL);
+  pthread_mutex_init(&mutex_tab_username, NULL);
+  pthread_mutex_init(&mutex_disconnected_clients, NULL);
+  pthread_mutex_init(&mutex_Threads_id, NULL);
+  //pthread_mutex_init(&mutex_thread_queue, NULL);
 
   // Initialise the shared queue of disconnected clients
   disconnected_clients = new_queue();
+  //thread_queue = new_queue();
 
   // Just in case, we want to know the address of each client
   struct sockaddr_in tab_adr[MAX_CLIENT];
@@ -738,6 +966,7 @@ int main(int argc, char *argv[]) {
     // We get the first free spot in the array
     int i = get_free_spot();
 
+    // We accept a first connection from a client
     tab_lg[i] = sizeof(struct sockaddr_in);
     tab_client_connecting[i] = accept(dS, (struct sockaddr*) &tab_adr[i],&tab_lg[i]) ;
     if(tab_client_connecting[i] == -1) {
@@ -756,6 +985,7 @@ int main(int argc, char *argv[]) {
     else{
       Threads_id[i] = tid;
     }
+    printf("Thread %d cree\n", i+1);
 
   
   }
