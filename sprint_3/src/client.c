@@ -37,7 +37,11 @@ char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
 char *color; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
-int server_port; // port du serveur
+int server_port; // port du serveur  
+int nb_upload; // nombre de téléchargement en cours
+pthread_mutex_t mutex_upload; // mutex pour la variable nb_upload
+int nb_download; // nombre de téléchargement en cours
+pthread_mutex_t mutex_download; // mutex pour la variable nb_download
 
 // Struct for the messages
 typedef struct Message Message;
@@ -205,20 +209,28 @@ long get_file_size(FILE *file) {
 /***************** UPLOAD ******************/
 
 
-void *upload_file(void* filename){
+void *upload_file(void* param){
     // Fonction qui envoie un fichier au serveur (thread)
     // On utilise un thread pour pouvoir envoyer un message au serveur pendant l'envoi du fichier
-    FILE *fichier = NULL;
-    printf("Chargement du fichier %s\n", (char*) filename);
-    fichier = fopen((char*) filename, "r");
+
+    struct upload_param {
+        char *filename;
+        FILE *file;
+    };
+    struct upload_param param_upload = *(struct upload_param*) param;
+    char *filename = param_upload.filename;
+
+    FILE *fichier = (FILE*) param_upload.file;
     if (fichier == NULL){
         afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
         pthread_exit(0);
     }
 
+
+
     long size_file = 0;
     size_file = get_file_size(fichier);
-    printf("Taille du fichier : %ld\n", size_file);
+    //printf("Taille du fichier : %ld\n", size_file);
 
     Message *request = malloc(sizeof(Message));
 
@@ -228,7 +240,7 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
-    printf("Socket Créé\n");
+    //printf("Socket Créé\n");
     struct sockaddr_in aS;
 
     aS.sin_family = AF_INET;
@@ -248,7 +260,7 @@ void *upload_file(void* filename){
         exit(EXIT_FAILURE);
     }
 
-    printf("Socket Connecté\n");
+    //printf("Socket Connecté\n");
     // Formatage du message
     strcpy(request->cmd, "upload");
     strcpy(request->from, pseudo);
@@ -257,7 +269,7 @@ void *upload_file(void* filename){
     strcpy(request->color, color);
 
     // Envoie le nom du fichier au serveur
-    printf("Envoie du nom du fichier au serveur\n");
+    //printf("Envoie du nom du fichier au serveur\n");
     int nb_send = send(dS, request, BUFFER_SIZE, 0);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
@@ -272,7 +284,7 @@ void *upload_file(void* filename){
 
 
     // Envoie la taille du fichier au serveur
-    printf("Envoie de la taille du fichier au serveur\n");
+    //printf("Envoie de la taille du fichier au serveur\n");
     nb_send = send(dS, &size_file, sizeof(long), 0);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
@@ -289,23 +301,23 @@ void *upload_file(void* filename){
     char buffer[BUFFER_SIZE];
     int nb_read_total = 0;
     int nb_read = 0;
-    printf("Envoie du fichier au serveur\n");
+    //printf("Envoie du fichier au serveur\n");
     // Envoie le fichier au serveur
     while(nb_read_total < size_file){
         nb_read = fread(buffer, 1, BUFFER_SIZE, fichier);
         nb_read_total += nb_read;
         // ajouter /0 a la fin du buffer si le fichier est plus petit que BUFFER_SIZE
-        if (nb_read < BUFFER_SIZE){
+        if (nb_read < BUFFER_SIZE){ // inutile mais pour un code robuste
             buffer[nb_read] = '\0';
         }
-        printf("Taille du fichier : %ld, Taille lu: %d\n, Taille lu total:%d\n", size_file, nb_read, nb_read_total);
+        //printf("Taille du fichier : %ld, Taille lu: %d\n, Taille lu total:%d\n", size_file, nb_read, nb_read_total);
         if (nb_read < BUFFER_SIZE){
             nb_send = send(dS, buffer, nb_read, 0);
         }else{
             nb_send = send(dS, buffer, BUFFER_SIZE, 0);
         }
-        printf("Taille envoye: %d\n", nb_send);
-        printf("Message envoye: %s\n", buffer);
+        //printf("Taille envoye: %d\n", nb_send);
+        //printf("Message envoye: %s\n", buffer);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(dS);
@@ -320,12 +332,12 @@ void *upload_file(void* filename){
     }
 
 
-    printf("Fermeture de la socket\n");
+    //printf("Fermeture de la socket\n");
     fclose(fichier);
     close(dS);
-    printf("Fichier fermé\n");
+    //printf("Fichier fermé\n");
     free(request);
-    printf("Fichier envoyé\n");
+    //printf("Fichier envoyé\n");
     pthread_exit(0);
 }
 
@@ -457,7 +469,7 @@ void *writeMessage(void *arg) {
             strcpy(request->message, traitement);
         }
 
-        // Si l'input est "/upload fichier" envoie le fichier au serveur
+        // Si l'input est "/upload fichier" envoie "upload" au server
         if (strcmp(traitement, "/upload") == 0){
             strcpy(request->cmd, "upload");
             traitement = strtok(NULL, " ");
@@ -465,16 +477,32 @@ void *writeMessage(void *arg) {
                 afficher(31, "Erreur : veuillez entrer un nom de fichier\n  /upload <fichier>\n", NULL);
                 continue;
             }
-            strcpy(request->message, traitement);
+            strcpy(request->message, "Envoie du fichier au serveur");
+
+            // Ouverture du fichier
+            FILE *fichier = NULL;
+            fichier = fopen(traitement, "r");
+            if (fichier == NULL){
+                afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
+                continue;
+            }
 
             pthread_t uploadThread;
 
-            if (pthread_create(&uploadThread, NULL, upload_file, traitement) != 0) {
+            //parametre du thread : nom du fichier et fichier
+            struct upload_param {
+                char *filename;
+                FILE *file;
+            } param;
+            param.filename = traitement;
+            param.file = fichier;
+
+            if (pthread_create(&uploadThread, NULL, upload_file, &param) != 0) {
                 perror("Erreur lors de la creation du thread de lecture");
                 close(dS);
                 exit(EXIT_FAILURE);
             }
-
+            
         }
 
 
