@@ -30,7 +30,7 @@
 
 #define PSEUDO_LENGTH 10 // taille maximal du pseudo
 #define CMD_LENGTH 10 // taille maximal de la commande
-#define MSG_LENGTH 400 // taille maximal du message
+#define MSG_LENGTH 960 // taille maximal du message
 #define COLOR_LENGTH 10 // taille de la couleur
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
@@ -331,7 +331,10 @@ void *upload_file(void* param){
         bzero(buffer, BUFFER_SIZE);
     }
 
+    char msg[150];
+    sprintf(msg, "Fichier envoye : %s (taille : %d/%ld)\n", filename, nb_read_total, size_file);
 
+    afficher(32, msg, NULL);
     //printf("Fermeture de la socket\n");
     fclose(fichier);
     close(dS);
