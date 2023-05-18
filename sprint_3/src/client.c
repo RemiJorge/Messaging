@@ -8,6 +8,8 @@
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
+#include <termios.h>
+#include <dirent.h>
 
 // DOCUMENTATION
 // This program acts as a client which connects to a server
@@ -33,15 +35,17 @@
 #define MSG_LENGTH 960 // taille maximal du message
 #define COLOR_LENGTH 10 // taille de la couleur
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH// taille maximal du message envoyé au serveur
+#define FILES_DIRECTORY "../src/client_files/" // répertoire courant
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
 char *color; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur  
-int nb_upload; // nombre de téléchargement en cours
-pthread_mutex_t mutex_upload; // mutex pour la variable nb_upload
-int nb_download; // nombre de téléchargement en cours
-pthread_mutex_t mutex_download; // mutex pour la variable nb_download
+int num_files; // nombre de fichiers dans le répertoire de téléchargement, 0 signifie que le menu n'est pas ouvert
+int index_cursor = 0; // index_cursor du fichier sélectionné dans le menu de téléchargement
+
+void *afficher(int color, char *msg, void *args);
+
 
 // Struct for the messages
 typedef struct Message Message;
@@ -82,12 +86,172 @@ struct Message {
             FONCTIONS UTILITAIRES
 ********************************************/
 
+// Fonction pour désactiver le mode canonique du terminal
+void disableCanonicalMode() {
+    struct termios term;
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
+// Fonction pour activer le mode canonique du terminal
+void enableCanonicalMode() {
+    struct termios term;
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag |= ICANON | ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
+// Fonction pour afficher les fichiers du répertoire de téléchargement
+int displayFiles() {
+    //renvoie le nombre de fichiers dans le répertoire
+    DIR *directory;
+    struct dirent *file;
+
+    directory = opendir(FILES_DIRECTORY);
+    
+    printf("\033[35m---------- Choisissez un fichier à envoyer ----------\n");
+
+    int nb_file = 1;
+    printf("   retour au tchat\n");
+    if (directory) {
+        while ((file = readdir(directory)) != NULL) {
+            if (strcmp(file->d_name, ".") != 0 && strcmp(file->d_name, "..") != 0) {
+                printf("   %s\n", file->d_name);
+                nb_file++;
+            }
+        }
+        closedir(directory);
+    }
+
+    printf("\033[0m");
+
+    return nb_file;
+}
+
+void display_cursor() {
+    // Affiche le curseur à la bonne position
+    // Sauvegarde la position du curseur
+    printf("\033[s");
+    // Remonte le curseur de num_files-index_cursor lignes
+    printf("\033[%dA", num_files - index_cursor);
+    printf("-> ");
+    fflush(stdout);
+    // Restaure la position du curseur
+    printf("\033[u");
+}
+
+void clear_cursor() {
+    // Efface le curseur à la bonne position
+    // Sauvegarde la position du curseur
+    printf("\033[s");
+    // Remonte le curseur de num_files-index_cursor lignes
+    printf("\033[%dA", num_files - index_cursor);
+    printf("   ");
+    fflush(stdout);
+    // Restaure la position du curseur
+    printf("\033[u");
+}
+
+
+// Fonction pour obtenir le fichier choisi par l'utilisateur avec les flèches du clavier
+char* get_file() {
+    disableCanonicalMode();
+
+    //Efface les deux dernières lignes
+    printf("\033[2K\r\033[1A\033[2K\r");
+
+    DIR *directory;
+    struct dirent *file;
+
+    directory = opendir(FILES_DIRECTORY); // Remplacez "repertoire_de_telechargement" par le chemin du répertoire de téléchargement
+
+    num_files = displayFiles();
+
+    int c;
+    do {
+
+        display_cursor();
+
+        c = getchar();
+        if (c == 27) { // Vérifie si une séquence d'échappement a été détectée
+            getchar(); // Ignore le caractère '['
+            clear_cursor(index_cursor, num_files);
+            switch (getchar()) {
+                case 'A': // Flèche vers le haut
+                    index_cursor = (index_cursor - 1 + num_files) % num_files;
+                    break;
+                case 'B': // Flèche vers le bas
+                    index_cursor = (index_cursor + 1) % num_files;
+                    break;
+                   }
+        }
+    } while (c != '\n'); // Sort de la boucle lorsque l'utilisateur appuie sur la touche Entrée
+
+    enableCanonicalMode();
+
+    char* filename = NULL;
+    
+    if (index_cursor >0) {
+
+        // Récupère le nom du fichier sélectionné
+        int currentIndex = 1;
+
+        directory = opendir(FILES_DIRECTORY); // Remplacez "repertoire_de_telechargement" par le chemin du répertoire de téléchargement
+
+        if (directory) {
+            while ((file = readdir(directory)) != NULL) {
+                if (strcmp(file->d_name, ".") != 0 && strcmp(file->d_name, "..") != 0) {
+                    if (currentIndex == index_cursor) {
+                        filename = strdup(file->d_name);
+                        break;
+                    }
+                    currentIndex++;
+                }
+            }
+            closedir(directory);
+        }
+    
+    }
+
+
+    //clear the number of files
+    for (int i = 0; i <= num_files; i++) {
+        printf("\033[1A\033[2K\r");
+    }
+    num_files = 0;
+    afficher(31, "", NULL);
+
+    return filename;
+
+}
+
+
+
 void *afficher(int color, char *msg, void *args){
     /*  Fonction formatant l'affichage
         color : couleur du texte
         msg : message à afficher
         args : arguments du message
     */
+
+    if (num_files > 0){
+        //clear the number of files
+        for (int i = 0; i <= num_files; i++) {
+            printf("\033[1A\033[2K\r");
+        }
+        //Change la couleur du texte
+        printf("\033[%dm", color);
+        //Affiche le message
+        printf(msg, args);
+        printf("\n\033[0m");
+
+        displayFiles();
+        display_cursor();
+
+        fflush(stdout);
+        return NULL;
+    }
 
     //Efface la ligne
     printf("\033[2K\r");
@@ -473,18 +637,34 @@ void *writeMessage(void *arg) {
         }
 
         // Si l'input est "/upload fichier" envoie "upload" au server
+        // Si le fichier n'est pas spécifié, demande le fichier à uploader
         if (strcmp(traitement, "/upload") == 0){
             strcpy(request->cmd, "upload");
             traitement = strtok(NULL, " ");
             if (traitement == NULL){
-                afficher(31, "Erreur : veuillez entrer un nom de fichier\n  /upload <fichier>\n", NULL);
-                continue;
+                //TODO: demander le fichier que l'on souhaite uploader
+                traitement = get_file();
+                if (traitement == NULL){
+                    // L'option retour au tchat selectionner
+                    continue;
+                }
             }
             strcpy(request->message, "Envoie du fichier au serveur");
 
+            //ajout du chemin du fichier
+            char chemin[100];
+            strcpy(chemin, FILES_DIRECTORY);
+            strcat(chemin, traitement);
+
+
+            if (access(chemin, F_OK) == -1){
+                afficher(31, "Erreur : le fichier n'existe pas\n", NULL);
+                continue;
+            }
+
             // Ouverture du fichier
             FILE *fichier = NULL;
-            fichier = fopen(traitement, "r");
+            fichier = fopen(chemin, "r");
             if (fichier == NULL){
                 afficher(31, "Erreur lors de l'ouverture du fichier\n", NULL);
                 continue;
@@ -574,7 +754,7 @@ int main(int argc, char *argv[]) {
     server_port = atoi(argv[2]);
 
 
-    printf("\033[2J"); //Clear the screen
+    system("clear"); // Efface l'écran
 
 
     // Choisi une couleur random pour le client parmis les 11 couleurs disponibles dans array_color et stocke le pointeur dans color
@@ -711,7 +891,7 @@ int main(int argc, char *argv[]) {
     pthread_t readThread;
     pthread_t writeThread;
 
-    printf("\033[2J"); //Clear the screen
+    system("clear"); // Efface l'écran
     printf("Bienvenue sur la messagerie instantanee !\n");
     printf("Vous etes connecte au serveur %s:%s en tant que %s.\n\n", argv[1], argv[2], pseudo);
 

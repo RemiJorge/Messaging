@@ -375,7 +375,7 @@ void * upload_file_thread(void * arg){
         printf("Le nom du fichier est: %s\n", buffer->message);
 
         // We create the file
-        strcpy(path, "server_files/");
+        strcpy(path, "../src/server_files/");
         strcat(path, buffer->message);
         file = fopen(path, "w");
         if (file == NULL) {
