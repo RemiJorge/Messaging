@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
+#include <dirent.h>
 
 // DOCUMENTATION
 // This program acts as a server to relay messages between multiple clients
@@ -325,6 +326,11 @@ void send_to_all(int client_indice, Message * buffer) {
 }
 
 
+/*********************************************
+       Upload and Download Thread Functions
+**********************************************/
+
+
 // A function for a thread that will accept a connection using the socket 
 // for uploads and will create and receive the file and write in the file
 
@@ -449,6 +455,201 @@ void * upload_file_thread(void * arg){
     // We exit the thread
     pthread_exit(0);
 }
+
+
+
+// A function for a thread that will accept a connection using the socket 
+// for downloads and will send the list of files available for download.
+// Once the client has chosen a file, and sent back the file he chose,
+// the thread will send the size of the file and the file itself.
+
+void * download_file_thread(void * arg){
+
+    int nb_recv; // The number of bytes received
+    int nb_send; // The number of bytes sent
+    Message msg_buffer; // The buffer for the messages
+    Message * buffer = &msg_buffer; // A pointer to the buffer
+    int dS_thread_download; // The socket for the download for the accept
+    int continue_thread = 1; // A variable to know if we continue the thread or not
+    long file_size; // The size of the file
+    char path[MSG_SIZE]; // The path of the file
+    FILE * file; // The file
+
+    pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
+
+    // Initialise file_addr and length
+    struct sockaddr_in file_addr;
+    socklen_t length_file_addr;
+
+    // We accept the connection
+    dS_thread_download = accept(download_socket, (struct sockaddr *) &file_addr, &length_file_addr);
+    if (dS_thread_download == -1) {
+        perror("Erreur lors de l'accept");
+        exit(EXIT_FAILURE);
+    }
+
+
+    // Directory path
+    const char* directory_path = "../src/server_files/";
+
+    // Open the directory
+    DIR* directory = opendir(directory_path);
+    if (directory == NULL) {
+        printf("Unable to open directory.\n");
+        continue_thread = 0;
+    }
+
+    if (continue_thread == 1){
+
+        // Read directory entries
+        struct dirent* entry;
+        char file_list[256];
+        while ((entry = readdir(directory)) != NULL) {
+            // Exclude "." and ".." directories
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                // Copy the file name to the file_list
+                strncpy(file_list, entry->d_name, sizeof(file_list));
+                file_list[sizeof(file_list) - 1] = '\0';  // Ensure null-termination
+
+                // Concatentate the file_list to buffer->message
+                strcat(buffer->message, file_list);
+                strcat(buffer->message, "/");
+
+                // Use the file name in the file_list as needed (e.g., print it)
+                printf("%s\n", file_list);
+            }
+        }
+
+        // Close the directory
+        closedir(directory);
+
+        printf("buffer->message: %s\n", buffer->message);
+
+
+        // We send the list of files
+        nb_send = send(dS_thread_download, buffer, BUFFER_SIZE, 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi");
+            exit(EXIT_FAILURE);
+        }
+        // If the client disconnected, we stop the thread
+        if (nb_send == 0) {
+            printf("Le client s'est deconnecte dans le download\n");
+            continue_thread = 0;
+        }
+
+    }
+
+    if (continue_thread == 1){
+        // We receive the file name the client wants to download
+        nb_recv = recv(dS_thread_download, buffer, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception");
+            exit(EXIT_FAILURE);
+        }
+        // If the client disconnected, we stop the thread
+        if (nb_recv == 0) {
+            continue_thread = 0;
+        }
+
+    }
+
+    if (continue_thread == 1){
+        // We concatenate the path of the file
+        strcpy(path, "../src/server_files/");
+        strcat(path, buffer->message);
+
+        // We open the file
+        file = fopen(path, "rb");
+        if (file == NULL) {
+            perror("Erreur lors de l'ouverture du fichier");
+            continue_thread = 0;
+        }
+
+    }
+
+    if (continue_thread == 1){
+        // We get the size of the file
+        // Put the cursor at the end of the file
+        fseek(file, 0, SEEK_END);  
+        // Get the size of the file
+        file_size = ftell(file);   
+        // Put the cursor at the beginning of the file     
+        rewind(file);              
+
+        // We send the size of the file
+        nb_send = send(dS_thread_download, &file_size, sizeof(long), 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi");
+            exit(EXIT_FAILURE);
+        } 
+        if (nb_send == 0) {
+            printf("Le client s'est deconnecte lors de l'envoi de file_size\n");
+            continue_thread = 0;
+        }
+    }
+
+    char packet[BUFFER_SIZE];
+    int nb_read_total = 0;
+    int nb_read = 0;
+    //printf("Envoie du fichier au serveur\n");
+    if (continue_thread == 1){
+        // Envoie le fichier au serveur
+        while(nb_read_total < file_size){
+            nb_read = fread(packet, 1, BUFFER_SIZE, file);
+            nb_read_total += nb_read;
+            // ajouter /0 a la fin du buffer si le fichier est plus petit que BUFFER_SIZE
+            if (nb_read < BUFFER_SIZE){ // inutile mais pour un code robuste
+                packet[nb_read] = '\0';
+            }
+            //printf("Taille du fichier : %ld, Taille lu: %d\n, Taille lu total:%d\n", size_file, nb_read, nb_read_total);
+            if (nb_read < BUFFER_SIZE){
+                nb_send = send(dS_thread_download, packet, nb_read, 0);
+            }else{
+                nb_send = send(dS_thread_download, packet, BUFFER_SIZE, 0);
+            }
+            //printf("Taille envoye: %d\n", nb_send);
+            //printf("Message envoye: %s\n", buffer);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                exit(EXIT_FAILURE);
+            }
+            if (nb_send == 0) {
+                printf("Le client s'est deconnecte lors de l'envoi du fichier\n");
+                continue_thread = 0;
+                break;
+            }
+            bzero(packet, BUFFER_SIZE);
+        }
+
+        // We close the file
+        fclose(file);
+
+    }
+
+    // We close the socket
+    close(dS_thread_download);
+    
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_ended_threads);
+    // We put the thread id in the queue of ended threads
+    enqueue(ended_threads, ThreadId);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_ended_threads);
+
+    // Increment the semaphore to indicate that a thread has ended
+    sem_post(&thread_end);
+
+    printf("Dowload thread end\n");
+    pthread_exit(0);
+} 
+
+
+
+
+/*******************************************
+        Main Thread Function for Clients
+*********************************************/
 
 
 // A function for a thread that will take as an argument
@@ -688,7 +889,7 @@ void * client_thread(void * dS_client_connection) {
             pthread_t thread_upload;
 
             if (pthread_create(&thread_upload, NULL, upload_file_thread, NULL) != 0) {
-                perror("Erreur lors de la creation du thread");
+                perror("Erreur lors de la creation du thread upload");
                 printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
                 exit(EXIT_FAILURE);
             }
@@ -698,6 +899,22 @@ void * client_thread(void * dS_client_connection) {
             strcpy(buffer->cmd, "upload");
             strcpy(buffer->message, "I am uploading a file!");
             send_to_all(client_indice, buffer);
+            continue;
+        }
+
+        // If the client sends "download", we launch a thread to send a file
+        if (strcmp(buffer->cmd, "download") == 0) {
+            printf("DOWNLOAD detected\n");
+
+            // We launch a thread to send the file
+            pthread_t thread_download;
+
+            if (pthread_create(&thread_download, NULL, download_file_thread, NULL) != 0) {
+                perror("Erreur lors de la creation du thread download");
+                printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
+                exit(EXIT_FAILURE);
+            }
+            printf("Thread download cree\n");
             continue;
         }
 
