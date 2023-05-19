@@ -488,58 +488,6 @@ void * download_file_thread(void * arg){
         exit(EXIT_FAILURE);
     }
 
-
-    // Directory path
-    const char* directory_path = "../src/server_files/";
-
-    // Open the directory
-    DIR* directory = opendir(directory_path);
-    if (directory == NULL) {
-        printf("Unable to open directory.\n");
-        continue_thread = 0;
-    }
-
-    if (continue_thread == 1){
-
-        // Read directory entries
-        struct dirent* entry;
-        char file_list[256];
-        while ((entry = readdir(directory)) != NULL) {
-            // Exclude "." and ".." directories
-            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                // Copy the file name to the file_list
-                strncpy(file_list, entry->d_name, sizeof(file_list));
-                file_list[sizeof(file_list) - 1] = '\0';  // Ensure null-termination
-
-                // Concatentate the file_list to buffer->message
-                strcat(buffer->message, file_list);
-                strcat(buffer->message, "/");
-
-                // Use the file name in the file_list as needed (e.g., print it)
-                printf("%s\n", file_list);
-            }
-        }
-
-        // Close the directory
-        closedir(directory);
-
-        printf("buffer->message: %s\n", buffer->message);
-
-
-        // We send the list of files
-        nb_send = send(dS_thread_download, buffer, BUFFER_SIZE, 0);
-        if (nb_send == -1) {
-            perror("Erreur lors de l'envoi");
-            exit(EXIT_FAILURE);
-        }
-        // If the client disconnected, we stop the thread
-        if (nb_send == 0) {
-            printf("Le client s'est deconnecte dans le download\n");
-            continue_thread = 0;
-        }
-
-    }
-
     if (continue_thread == 1){
         // We receive the file name the client wants to download
         nb_recv = recv(dS_thread_download, buffer, BUFFER_SIZE, 0);
@@ -552,8 +500,7 @@ void * download_file_thread(void * arg){
             continue_thread = 0;
         }
         
-        // @modif
-        // If the buffer->cmd egals "cancel" we stop the thread
+        // If the buffer->cmd is "cancel" we stop the thread
         if (strcmp(buffer->cmd, "cancel") == 0) {
             continue_thread = 0;
         }
@@ -908,9 +855,62 @@ void * client_thread(void * dS_client_connection) {
             continue;
         }
 
-        // If the client sends "download", we launch a thread to send a file
+        // If the client sends "download", we send him the list of the files available
+        // and we create a thread to send the file chosen by the client
         if (strcmp(buffer->cmd, "download") == 0) {
             printf("DOWNLOAD detected\n");
+
+            // Directory path
+            const char* directory_path = "../src/server_files/";
+
+            // Open the directory
+            DIR* directory = opendir(directory_path);
+            if (directory == NULL) {
+                perror("Unable to open directory.\n");
+                exit(EXIT_FAILURE);
+            }
+
+            // Put \0 in the buffer->message to avoid concatenation problems
+            buffer->message[0] = '\0';
+            
+            // Read directory entries
+            struct dirent* entry;
+            char file_list[MSG_SIZE];
+            while ((entry = readdir(directory)) != NULL) {
+                // Exclude "." and ".." directories
+                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                    // Copy the file name to the file_list
+                    strncpy(file_list, entry->d_name, sizeof(file_list));
+                    file_list[sizeof(file_list) - 1] = '\0';  // Ensure null-termination
+
+                    // Concatentate the file_list to buffer->message
+                    strcat(buffer->message, file_list);
+                    strcat(buffer->message, "/");
+
+                    // Use the file name in the file_list as needed (e.g., print it)
+                    printf("%s\n", file_list);
+                }
+            }
+
+            // Close the directory
+            closedir(directory);
+
+            printf("buffer->message: %s\n", buffer->message);
+
+            // We send the list of files
+            strcpy(buffer->cmd, "download");
+            strcpy(buffer->to, buffer->from);
+            strcpy(buffer->from, "Serveur");
+            nb_send = send(dSC, buffer, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi");
+                exit(EXIT_FAILURE);
+            }
+            // If the client disconnected, we stop the thread
+            if (nb_send == 0) {
+                printf("Le client s'est deconnecte avant le download\n");
+                break;
+            }
 
             // We launch a thread to send the file
             pthread_t thread_download;
