@@ -551,6 +551,12 @@ void * download_file_thread(void * arg){
         if (nb_recv == 0) {
             continue_thread = 0;
         }
+        
+        // @modif
+        // If the buffer->cmd egals "cancel" we stop the thread
+        if (strcmp(buffer->cmd, "cancel") == 0) {
+            continue_thread = 0;
+        }
 
     }
 
