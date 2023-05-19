@@ -302,7 +302,7 @@ void *afficher(int color, char *msg, void *args){
         msg : message à afficher
         args : arguments du message
     */
-
+    // TODO affcihage lorsque on est dans le menu download
     if (num_files > 0){
         //clear the number of files
         for (int i = 0; i <= num_files; i++) {
@@ -650,7 +650,7 @@ void * download_file(void* param){
         // If ever a client disconnect while we are receiving the messages
         // or if he has sent everything and closed the socket
         if (nb_recv == 0) {
-            printf("Socket ferme : Le serveur a fini de upload\n");
+            //printf("Socket ferme : Le serveur a fini de upload\n");
             break;
         }
         nb_read_total += nb_recv;
@@ -666,8 +666,7 @@ void * download_file(void* param){
     }
 
     char msg[150];
-    sprintf(msg, "Fichier reçu : %s (taille : %d/%ld)\n", filename, nb_read_total, file_size);
-
+    sprintf(msg, "Fichier reçu : %s (taille : %d/%ld)\n", filename, num_files, file_size);
     afficher(32, msg, NULL);
     // We close the file
     fclose(fichier);
@@ -1058,7 +1057,7 @@ int main(int argc, char *argv[]) {
     Message *request = malloc(sizeof(Message));
 
     // Demande le pseudo
-    printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 1);
+    printf("Entrez votre pseudo (max %d caracteres) : ", PSEUDO_LENGTH - 2);
     do{
         do {
             fgets(pseudo, PSEUDO_LENGTH, stdin);
