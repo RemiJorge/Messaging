@@ -666,7 +666,7 @@ void * download_file(void* param){
     }
 
     char msg[150];
-    sprintf(msg, "Fichier reçu : %s (taille : %d/%ld)\n", filename, num_files, file_size);
+    sprintf(msg, "Fichier reçu : %s (taille : %d/%ld)\n", filename, nb_read_total, file_size);
     afficher(32, msg, NULL);
     // We close the file
     fclose(fichier);
