@@ -41,7 +41,7 @@ char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[
 char *color; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur  
-int num_files; // nombre de fichiers dans le répertoire de téléchargement, 0 signifie que le menu n'est pas ouvert
+int num_files; // nombre de fichiers dans le menu, 0 signifie que le menu n'est pas ouvert
 int index_cursor = 0; // index_cursor du fichier sélectionné dans le menu de téléchargement
 
 void *afficher(int color, char *msg, void *args);
@@ -103,7 +103,7 @@ void enableCanonicalMode() {
 }
 
 // Fonction pour afficher les fichiers du répertoire de téléchargement
-int displayFiles() {
+int display_files() {
     //renvoie le nombre de fichiers dans le répertoire
     DIR *directory;
     struct dirent *file;
@@ -166,9 +166,10 @@ char* get_file() {
 
     directory = opendir(FILES_DIRECTORY); // Remplacez "repertoire_de_telechargement" par le chemin du répertoire de téléchargement
 
-    num_files = displayFiles();
+    num_files = display_files();
 
     int c;
+    index_cursor = 0;
     do {
 
         display_cursor();
@@ -219,6 +220,7 @@ char* get_file() {
     for (int i = 0; i <= num_files; i++) {
         printf("\033[1A\033[2K\r");
     }
+    index_cursor = 0;
     num_files = 0;
     afficher(31, "", NULL);
 
@@ -226,6 +228,72 @@ char* get_file() {
 
 }
 
+
+char * get_file_download(char *files) {
+    // Fonction pour obtenir le fichier choisi par l'utilisateur avec les flèches du clavier
+    disableCanonicalMode();
+
+    //Efface les deux dernières lignes
+    printf("\033[2K\r\033[1A\033[2K\r");
+    printf("\033[35m---------- Choisissez un fichier à recevoir ----------\n");
+    printf("   retour au tchat\n");
+
+    char *file = strtok(files, "/");
+    char *files_array[100];
+    int i = 0;
+    while (file != NULL) {
+        files_array[i] = file;
+        printf("   %s\n", files_array[i]);
+        file = strtok(NULL, "/");
+        i++;
+    }
+    
+    num_files = i + 1;
+    index_cursor = 0;
+    int c;
+    do {
+
+        display_cursor();
+
+        c = getchar();
+        if (c == 27) { // Vérifie si une séquence d'échappement a été détectée
+            getchar(); // Ignore le caractère '['
+            clear_cursor(index_cursor, num_files);
+            switch (getchar()) {
+                case 'A': // Flèche vers le haut
+                    index_cursor = (index_cursor - 1 + num_files) % num_files;
+                    break;
+                case 'B': // Flèche vers le bas
+                    index_cursor = (index_cursor + 1) % num_files;
+                    break;
+                   }
+        }
+    } while (c != '\n'); // Sort de la boucle lorsque l'utilisateur appuie sur la touche Entrée
+
+    enableCanonicalMode();
+
+    char* filename = NULL;
+    
+    if (index_cursor >0) {
+
+        // Récupère le nom du fichier sélectionné
+        if (num_files > 0) {
+            filename = files_array[index_cursor - 1];
+        }
+
+    }
+
+    //clear the number of files
+    for (int i = 0; i <= num_files; i++) {
+        printf("\033[1A\033[2K\r");
+    }
+    num_files = 0;
+    index_cursor = 0;
+    afficher(31, "", NULL);
+
+    return filename;
+
+}
 
 
 void *afficher(int color, char *msg, void *args){
@@ -246,7 +314,7 @@ void *afficher(int color, char *msg, void *args){
         printf(msg, args);
         printf("\n\033[0m");
 
-        displayFiles();
+        display_files();
         display_cursor();
 
         fflush(stdout);
@@ -509,6 +577,107 @@ void *upload_file(void* param){
 }
 
 
+/***************** DOWNLOAD ******************/
+
+void * download_file(void* param){
+    // Fonction qui télécharge un fichier du serveur (thread)
+    // Prend en argument le nom du fichier à télécharger et la socket du serveur
+    // On utilise un thread pour pouvoir envoyer un message au serveur pendant le téléchargement du fichier
+    struct download_param {
+        char *filename;
+        int *dS;
+    };
+    struct download_param param_download = *(struct download_param*) param;
+
+    int dS = *(param_download.dS);
+
+    Message buffer[BUFFER_SIZE];
+    char *filename = param_download.filename;
+
+    if (filename == NULL){ // retour au tchat
+        close(dS);
+        pthread_exit(0);
+    }
+
+    // On envoit le nom du fichier au serveur
+    strcpy(buffer->message, filename);
+    int nb_recv = send(dS, buffer, BUFFER_SIZE, 0);
+    if (nb_recv == -1) {
+        perror("Erreur lors de la reception du message");
+        close(dS);
+        exit(EXIT_FAILURE);
+    } else if (nb_recv == 0) {
+        // Connection fermée par le client ou le serveur
+        afficher(31, "Le serveur a ferme la connexion\n", NULL);
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
+    
+    // on recoit la taille du fichier selectionner
+    long file_size;
+    nb_recv = recv(dS, &file_size, sizeof(long), 0);
+    if (nb_recv == -1) {
+        perror("Erreur lors de la reception du message");
+        close(dS);
+        exit(EXIT_FAILURE);
+    } else if (nb_recv == 0) {
+        // Connection fermée par le client ou le serveur
+        afficher(31, "Le serveur a ferme la connexion\n", NULL);
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
+
+
+    // puis on recoit le fichier
+    FILE *fichier = NULL;
+    char path[100];
+    strcpy(path, FILES_DIRECTORY);
+    strcat(path, filename);
+    fichier = fopen(path, "w");
+    if (fichier == NULL) {
+        perror("Erreur lors de la creation du fichier");
+        exit(EXIT_FAILURE);
+    }
+
+    char packet[BUFFER_SIZE];
+    int nb_read_total = 0;
+    while(1){
+        nb_recv = recv(dS, packet, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception");
+            exit(EXIT_FAILURE);
+        }
+        // If ever a client disconnect while we are receiving the messages
+        // or if he has sent everything and closed the socket
+        if (nb_recv == 0) {
+            printf("Socket ferme : Le serveur a fini de upload\n");
+            break;
+        }
+        nb_read_total += nb_recv;
+
+        
+        // If the nb_recv_total greater than the file_size, we stop the loop
+        if (nb_read_total >= file_size + 1000) {
+            break;
+        }
+                
+        // We write in the file
+        fwrite(packet, sizeof(char), nb_recv, fichier);
+    }
+
+    char msg[150];
+    sprintf(msg, "Fichier reçu : %s (taille : %d/%ld)\n", filename, nb_read_total, file_size);
+
+    afficher(32, msg, NULL);
+    // We close the file
+    fclose(fichier);
+    
+    pthread_exit(0);
+}
+
+
+
+
 /*******************************************
             FONCTIONS DE THREADS
 ********************************************/
@@ -642,14 +811,15 @@ void *writeMessage(void *arg) {
             strcpy(request->cmd, "upload");
             traitement = strtok(NULL, " ");
             if (traitement == NULL){
-                //TODO: demander le fichier que l'on souhaite uploader
+                //Demander le fichier que l'on souhaite uploader
                 traitement = get_file();
                 if (traitement == NULL){
                     // L'option retour au tchat selectionner
                     continue;
                 }
             }
-            strcpy(request->message, "Envoie du fichier au serveur");
+            strcpy(request->message, "Envoie du fichier : ");
+            strcat(request->message, traitement);
 
             //ajout du chemin du fichier
             char chemin[100];
@@ -689,6 +859,80 @@ void *writeMessage(void *arg) {
         }
 
 
+        // Si l'input est "/download" envoie "download" au server
+        if (strcmp(traitement, "/download") == 0){
+            strcpy(request->cmd, "download");
+            strcpy(request->message, "Demande de fichier au serveur");
+            // Envoie le message au serveur
+            nb_send = send(dS, request, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                close(dS);
+                exit(EXIT_FAILURE);
+            } else if (nb_send == 0) {
+                // Connection fermée par le client ou le serveur
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                close(dS);
+                break;
+            }
+
+            int dS_download = socket(AF_INET, SOCK_STREAM, 0);
+            if (dS_download == -1) {
+                perror("Erreur lors de la creation de la socket");
+                exit(EXIT_FAILURE);
+            }
+
+            //printf("Socket Créé\n");
+            struct sockaddr_in aS;
+
+            aS.sin_family = AF_INET;
+            int result = inet_pton(AF_INET, server_ip, &(aS.sin_addr));
+            if (result == 0) {
+                fprintf(stderr, "Invalid address\n");
+                exit(EXIT_FAILURE);
+            } else if (result == -1) {
+                perror("inet_pton");
+                exit(EXIT_FAILURE);
+            }
+
+            aS.sin_port = htons(server_port + 2); // +2 pour le port du download du fichier
+            socklen_t lgA = sizeof(struct sockaddr_in) ;
+            if (connect(dS_download, (struct sockaddr *) &aS, lgA) == -1) {
+                perror("Erreur connect client");
+                exit(EXIT_FAILURE);
+            }
+
+            // reception des fichiers disponibles dans un struct message, les fichiers sont séparés par des "/"
+            int nb_recv = recv(dS_download, request, BUFFER_SIZE, 0);
+            if (nb_recv == -1) {
+                perror("Erreur lors de la reception du message");
+                close(dS);
+                exit(EXIT_FAILURE);
+            } else if (nb_recv == 0) {
+                // Connection fermée par le client ou le serveur
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                close(dS);
+                exit(EXIT_FAILURE);
+            }
+
+            char * filename = get_file_download(request->message);
+
+            struct download_param {
+                char *filename;
+                int *dS;
+            } param;
+
+            param.filename = filename;
+            param.dS = &dS_download;
+            pthread_t downloadThread;
+
+            if (pthread_create(&downloadThread, NULL, download_file, &param) != 0) {
+                perror("Erreur lors de la creation du thread de lecture");
+                close(dS);
+                exit(EXIT_FAILURE);
+            }
+            continue;
+        }
 
         // Envoie le message au serveur
         nb_send = send(dS, request, BUFFER_SIZE, 0);
