@@ -502,6 +502,11 @@ void * download_file_thread(void * arg){
         // Read directory entries
         struct dirent* entry;
         char file_list[MSG_SIZE];
+
+        // Put \0 at the beginning of the message to avoid concatenation problems
+        buffer->message[0] = '\0';
+
+
         while ((entry = readdir(directory)) != NULL) {
             // Exclude "." and ".." directories
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
