@@ -75,30 +75,15 @@ void *afficher(int color, char *msg, void *args);
 typedef struct Message Message;
 struct Message {
     // The command
-    // Possible commands : "dm", "who", "fin", "list", "upload", "download", "endu", "endd"
+    // Possible commands : "dm", "who", "fin", "list", "upload", "download"
     char cmd[CMD_LENGTH];
-    // If the server is receiving the message:
-        // If the commend is "dm", the username of the client to send the message to
-        // If the command is "who", username is empty
-        // If the command is "fin", username is empty
-        // If the command is "list", username is empty
-        // If the client is trying to connect, username is the username of the client
-    // If the server is sending the message:
-        // If the command is "dm", username is who sent the message
-        // If the command is "who", username is Server
-        // If the command is "list", username is Server
+    // The username of the client who will receive the message
+    // It can be Server if the message is sent from the server
     char from[PSEUDO_LENGTH];
+    // The username of the client who sent the message
+    // It can be Server if the message is sent to the server
     char to[PSEUDO_LENGTH];
     // The message
-    // If the server is receiving the message:
-        // If the command is "fin", message is empty
-        // If the commande is "who", message is empty
-        // If the command is "list", message is empty
-        // If the command is "dm", message is the message to send
-    // If the server is sending the message:
-        // If the command is "who", message is username the client who asked
-        // If the command is "list", message is the list of the connected clients
-        // If the command is "dm", message is the message sent
     char message[MSG_LENGTH];
     // The color of the message
     char color[COLOR_LENGTH];

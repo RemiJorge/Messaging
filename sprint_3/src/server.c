@@ -274,15 +274,6 @@ struct Message {
     // It can be Server if the message is sent to the server
     char to[USERNAME_SIZE];
     // The message
-    // If the server is receiving the message:
-        // If the command is "fin", message is empty
-        // If the commande is "who", message is empty
-        // If the command is "list", message is empty
-        // If the command is "dm", message is the message to send
-    // If the server is sending the message:
-        // If the command is "who", message is username the client who asked
-        // If the command is "list", message is the list of the connected clients
-        // If the command is "dm", message is the message sent
     char message[MSG_SIZE];
     // The color of the message
     char color[COLOR_SIZE];
@@ -518,15 +509,11 @@ void * download_file_thread(void * arg){
                 strcat(buffer->message, file_list);
                 strcat(buffer->message, "/");
 
-                // Use the file name in the file_list as needed (e.g., print it)
-                printf("%s\n", file_list);
             }
         }
 
         // Close the directory
         closedir(directory);
-
-        printf("buffer->message: %s\n", buffer->message);
 
         // We send the list of files
         strcpy(buffer->cmd, "download");
@@ -578,6 +565,7 @@ void * download_file_thread(void * arg){
     }
 
     if (continue_thread == 1){
+        printf("Le fichier %s a ete ouvert\n", buffer->message);
         // We get the size of the file
         // Put the cursor at the end of the file
         fseek(file, 0, SEEK_END);  
@@ -633,6 +621,7 @@ void * download_file_thread(void * arg){
 
         // We close the file
         fclose(file);
+        printf("Le fichier a ete ferme\n");
 
     }
 
@@ -649,7 +638,7 @@ void * download_file_thread(void * arg){
     // Increment the semaphore to indicate that a thread has ended
     sem_post(&thread_end);
 
-    printf("Dowload thread end\n");
+    printf("Download thread end\n");
     pthread_exit(0);
 } 
 
