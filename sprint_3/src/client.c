@@ -42,7 +42,9 @@ char *color; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur  
 int num_files; // nombre de fichiers dans le menu, 0 signifie que le menu n'est pas ouvert
+int menu = 0; // 0 si le menu n'est pas ouvert, 1 si le menu est ouvert pour l'upload, 2 si le menu est ouvert pour le download
 int index_cursor = 0; // index_cursor du fichier sélectionné dans le menu de téléchargement
+char *files_array[100];
 
 void *afficher(int color, char *msg, void *args);
 
@@ -129,6 +131,18 @@ int display_files() {
     return nb_file;
 }
 
+void* display_files_download(){
+    // les fichiers à afficher sont dans files_array
+    printf("\033[35m---------- Choisissez un fichier à recevoir ----------\n");
+    printf("   retour au tchat\n");
+    for (int i = 0; i < num_files-1; i++){
+        printf("   %s\n", files_array[i]);
+    }
+    printf("\033[0m");
+    return NULL;
+}
+
+
 void display_cursor() {
     // Affiche le curseur à la bonne position
     // Sauvegarde la position du curseur
@@ -167,7 +181,7 @@ char* get_file() {
     directory = opendir(FILES_DIRECTORY); // Remplacez "repertoire_de_telechargement" par le chemin du répertoire de téléchargement
 
     num_files = display_files();
-
+    menu = 1;
     int c;
     index_cursor = 0;
     do {
@@ -221,6 +235,7 @@ char* get_file() {
         printf("\033[1A\033[2K\r");
     }
     index_cursor = 0;
+    menu = 0;
     num_files = 0;
     afficher(31, "", NULL);
 
@@ -235,20 +250,17 @@ char * get_file_download(char *files) {
 
     //Efface les deux dernières lignes
     printf("\033[2K\r\033[1A\033[2K\r");
-    printf("\033[35m---------- Choisissez un fichier à recevoir ----------\n");
-    printf("   retour au tchat\n");
 
     char *file = strtok(files, "/");
-    char *files_array[100];
     int i = 0;
     while (file != NULL) {
         files_array[i] = file;
-        printf("   %s\n", files_array[i]);
         file = strtok(NULL, "/");
         i++;
     }
-    
     num_files = i + 1;
+    menu = 2;
+    display_files_download();
     index_cursor = 0;
     int c;
     do {
@@ -287,6 +299,7 @@ char * get_file_download(char *files) {
     for (int i = 0; i <= num_files; i++) {
         printf("\033[1A\033[2K\r");
     }
+    menu = 0;
     num_files = 0;
     index_cursor = 0;
     afficher(31, "", NULL);
@@ -302,8 +315,7 @@ void *afficher(int color, char *msg, void *args){
         msg : message à afficher
         args : arguments du message
     */
-    // TODO affcihage lorsque on est dans le menu download
-    if (num_files > 0){
+    if (menu == 1 || menu == 2){
         //clear the number of files
         for (int i = 0; i <= num_files; i++) {
             printf("\033[1A\033[2K\r");
@@ -314,12 +326,18 @@ void *afficher(int color, char *msg, void *args){
         printf(msg, args);
         printf("\n\033[0m");
 
-        display_files();
+        if (menu == 1){
+            display_files();
+        }
+        else{
+            display_files_download();
+        }
         display_cursor();
 
         fflush(stdout);
         return NULL;
     }
+
 
     //Efface la ligne
     printf("\033[2K\r");
