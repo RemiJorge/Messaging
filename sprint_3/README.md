@@ -5,7 +5,9 @@ between multiple clients using the TCP protocol. The server and the clients are 
 
 The server is able to handle multiple clients.
 
-We have improved the graphical interface of the client!
+You can now send and receive files to and from the server!
+
+We have improved the graphical interface of the client
 Please enjoy the new features!
 
 ## Compilation
@@ -55,4 +57,16 @@ Affiche tous les utilisateurs connectés
 /who
 
 Renvoie le pseudo
+
+/upload fichier
+
+Telecharge  le fichier qui se trouve dans le repertoire de client_files vers le server
+
+/upload 
+
+Ouvre le menu de selection de fichier afin d'envoyer un fichier de client_files vers le server
+
+/download
+
+Ouvre le menu de selection de fichier afin de télecharger le fichier choisi depuis le server 
 
