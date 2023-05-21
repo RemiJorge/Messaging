@@ -20,3 +20,12 @@ Voici le guide d'utilisation de la messagerie:
 
 /who
     Renvoie le pseudo
+
+/upload <fichier>
+    Telecharge  le <fichier> qui se trouve dans le repertoire de client_files vers le server
+
+/upload 
+    Ouvre le menu de selection de fichier afin d'envoyer un fichier de client_files vers le server
+
+/download
+    Ouvre le menu de selection de fichier afin de télecharger le fichier choisi depuis le server 

@@ -817,7 +817,7 @@ void * cleanup(void * arg) {
             perror("Erreur lors du join d'un thread");
         }
         else{
-            printf("Thread %ld joined\n", thread_id);
+            //printf("Thread %ld joined\n", thread_id);
         }
     }
 
@@ -1312,7 +1312,7 @@ int main(int argc, char *argv[]) {
         perror("Erreur lors de la creation du thread");
         exit(EXIT_FAILURE);
     }
-    printf("Thread de cleanup cree\n");
+    //printf("Thread de cleanup cree\n");
 
 
 
