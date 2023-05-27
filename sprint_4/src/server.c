@@ -9,6 +9,7 @@
 #include <semaphore.h>
 #include <time.h>
 #include <dirent.h>
+#include <signal.h>
 
 // DOCUMENTATION
 // This program acts as a server to relay messages between multiple clients
@@ -135,6 +136,9 @@ pthread_mutex_t mutex_tab_username;
 
 // A semaphore to indicate the number of free spots in the tab_client array
 sem_t free_spot;
+
+// The socket descriptor for the socket that deals with client connections
+int dS;
 
 // The socket descriptor for the socket that deals with file uploads
 int upload_socket;
@@ -287,11 +291,14 @@ struct Message {
 void send_to_all(int client_indice, Message * buffer) {
     int i = 0;
     int nb_send;
-    // Lock the mutex
-    pthread_mutex_lock(&mutex_tab_username);
-    strcpy(buffer->from, tab_username[client_indice]);
-    // Unlock the mutex
-    pthread_mutex_unlock(&mutex_tab_username);
+    // If the client_indice is -1, it means that the message is sent by the server
+    if (client_indice != -1){
+        // Lock the mutex
+        pthread_mutex_lock(&mutex_tab_username);
+        strcpy(buffer->from, tab_username[client_indice]);
+        // Unlock the mutex
+        pthread_mutex_unlock(&mutex_tab_username);
+    }
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_client);
     while( i < MAX_CLIENT){
@@ -314,6 +321,61 @@ void send_to_all(int client_indice, Message * buffer) {
     }
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_client);
+}
+
+// A function that will handle the SIGINT signal, it will tell the clients that the server is closing
+// and it will close the sockets, destroy the mutexes and semaphores, and free the memory
+
+void handle_interrupt(int signum){
+    printf("Le serveur va fermer\n");
+    // We send a message to all the clients to tell them that the server is closing
+    Message msg_buffer;
+    Message * buffer = &msg_buffer;
+    strcpy(buffer->cmd, "fin");
+    strcpy(buffer->from, "Serveur");
+    strcpy(buffer->to, "all");
+    strcpy(buffer->message, "Le serveur va fermer. Au revoir!");
+    send_to_all(-1, buffer);
+    // We close the sockets
+    close(dS);
+    close(upload_socket);
+    close(download_socket);
+    // We close the sockets of all of the clients
+    int i = 0;
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_client_connecting);
+    while (i < MAX_CLIENT) {
+        if (tab_client_connecting[i] != 0) {
+            close(tab_client_connecting[i]);
+        }
+        i = i + 1;
+    }  
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_client_connecting);
+
+    printf("Socket clients fermes\n");
+
+    // Destroy all the semaphores and mutexes
+    sem_destroy(&free_spot);
+    sem_destroy(&thread_end);
+    pthread_mutex_destroy(&mutex_tab_client_connecting);
+    pthread_mutex_destroy(&mutex_tab_client);
+    pthread_mutex_destroy(&mutex_tab_username);
+    pthread_mutex_destroy(&mutex_upload_socket);
+    pthread_mutex_destroy(&mutex_download_socket);
+    pthread_mutex_destroy(&mutex_Threads_id);
+    pthread_mutex_destroy(&mutex_ended_threads);
+
+    printf("Nettoyage termine\n");
+    printf("Derniers reglages...\n");
+
+    // Wait one second to let the threads finish and get cleaned up
+    sleep(1);
+    // We free the memory
+    free(ended_threads);
+    printf("Fermeture du serveur terminee avec success\n");
+    // We exit the program
+    exit(0);
 }
 
 
@@ -1036,7 +1098,7 @@ int main(int argc, char *argv[]) {
 
   // Creation of the sockets
 
-  int dS = socket(PF_INET, SOCK_STREAM, 0);
+  dS = socket(PF_INET, SOCK_STREAM, 0);
   if(dS == -1) {
     perror("Erreur lors de la creation du socket");
     exit(EXIT_FAILURE);
@@ -1056,6 +1118,7 @@ int main(int argc, char *argv[]) {
     perror("Erreur lors de la creation du socket");
     exit(EXIT_FAILURE);
   }
+  printf("Socket cree\n");
 
   // Voici la doc des structs utilises
   /*
@@ -1163,6 +1226,9 @@ int main(int argc, char *argv[]) {
   }
   printf("Thread de cleanup cree\n");
 
+  // We intercept the Ctrl+C signal
+  signal(SIGINT, handle_interrupt);
+
   // Acceptation de la connexion des clients
   printf("En attente de connexion des clients\n");
 
@@ -1197,38 +1263,9 @@ int main(int argc, char *argv[]) {
     }
     printf("Thread %d cree\n", i+1);
 
-  
-  }
-  
-  // This part is never reached
-
-  // We join all the threads in Threads_id that are not 0
-  int i = 0;
-  while (i < MAX_CLIENT) {
-    if (Threads_id[i] != 0) {
-      if (pthread_join(Threads_id[i], NULL) == -1){
-        perror("Erreur lors du join d'un thread");
-      }
-      else{
-        printf("Thread %d joined\n", i);
-      }
-    }
-    i = i + 1;
   }
 
-  //Then we join the cleanup thread
-  if (pthread_join(cleanup_tid, NULL) == -1){
-    perror("Erreur lors du join du thread de cleanup");
-  }
-  else{
-    printf("Thread de cleanup joined\n");
-  }
-
-  // Close the main socket
-  if (close(dS)==-1){
-    perror("Erreur lors de la fermeture du socket de acceptation");
-    exit(EXIT_FAILURE);
-  }
+// The server will never reach this point
 
 // Pour etre en accord avec les conventions de la norme POSIX,
 // le main doit retourner un int
