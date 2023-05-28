@@ -38,7 +38,7 @@
 #define CHANNEL_SIZE 10 // Size of the channel name
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH + CHANNEL_SIZE// taille maximal du message envoyé au serveur
 #define FILES_DIRECTORY "../src/client_files/" // répertoire courant
-#define PORT_CHANNEL 8080 // port pour les channels
+#define PORT_CHANNEL_START 8080 // port pour les channels
 
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
@@ -53,6 +53,7 @@ char *channel_array[200]; // tableau contenant les noms des channels
 int channel_connect[200]; // tableau contenant 1 si l'utilisateur est connecté au channel, 0 sinon
 int socket_channel_address; // socket du channel
 int *socket_server;
+int port_channel; // port du channel
 
 
 // This queue will hold elements of type pthread_t
@@ -587,8 +588,9 @@ void *channel_menu(int *ds, char *channels){
                 channel_connect[index_cursor - 1] = 1;
                 strcpy(request->cmd, "connect");
                 // connection au channel
-                int index_channel = index_cursor - 1;
-                pthread_create (&thread_channel, NULL, channel_thread, &index_channel);
+                if (channel != NULL){
+                    pthread_create (&thread_channel, NULL, channel_thread, (void *) channel);
+                }
             }
             strcpy(request->from, pseudo);
             strcpy(request->to, "server");
@@ -1073,7 +1075,7 @@ void * channel_thread(void *arg){
     char *channel = (char*) arg;
 
     char command[100];
-    sprintf(command, "gnome-terminal -- ./client_salon %s %d", server_ip, PORT_CHANNEL);
+    sprintf(command, "gnome-terminal -- ./client_salon %s %d", server_ip, port_channel);
     system(command);
 
 
@@ -1735,16 +1737,25 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
+
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT_CHANNEL);
-    
-    // Bind la socket au port 8080
-    if (bind(socket_channel_address, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
-    
+    port_channel = PORT_CHANNEL_START;
+    int bind_result;
+    printf("Recherche d'un port disponible pour le socket channel\n");
+    do {
+        address.sin_port = htons(port_channel);
+        
+        bind_result = bind(socket_channel_address, (struct sockaddr *)&address, sizeof(address));
+        
+        if (bind_result == 0) {
+            printf("Bind du socket channel reussi\n");
+            break;
+        } else {
+            port_channel++;
+        }  
+
+    }while (bind_result != 0 && port_channel < 65535);
     // Ecoute sur la socket
     if (listen(socket_channel_address, 3) < 0) {
         perror("listen failed");
@@ -1809,6 +1820,12 @@ int main(int argc, char *argv[]) {
 
     //Efface les 2 dernières lignes
     printf("\033[2K\033[1A\033[2K\r");
+
+    // Fermeture de la socket
+    close(dS);
+
+    // fermuture port channel
+    close(socket_channel_address);
 
     return EXIT_SUCCESS;
 }
