@@ -931,7 +931,7 @@ void * channel_thread(void * arg){
         }
         // If the client disconnected, we stop the thread
         if (nb_send == 0) {
-            printf("Le client s'est deconnecte dans le download\n");
+            printf("Le client s'est deconnecte dans le channel co/deco\n");
             continue_thread = 0;
         }
     }
@@ -946,12 +946,14 @@ void * channel_thread(void * arg){
             }
             // If the client disconnected, we stop the thread
             if (nb_recv == 0) {
+                printf("Le client s'est deconnecte dans le channel co/deco\n");
                 continue_thread = 0;
                 break;
             }
             
             // If the buffer->cmd is "exit" we stop the thread
             if (strcmp(buffer->cmd, "exit") == 0) {
+                printf("Le client a quitte le menu channel\n");
                 continue_thread = 0;
                 break;
             }
@@ -964,6 +966,7 @@ void * channel_thread(void * arg){
                 add(tab_channel[indice_client], buffer->channel);
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
+                printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);
             }
 
             // If the buffer->cmd is "disc" we remove the client from the channel
@@ -974,6 +977,7 @@ void * channel_thread(void * arg){
                 remove_element(tab_channel[indice_client], buffer->channel);
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
+                printf("Le client %d a quitte le channel %s\n", indice_client + 1, buffer->channel);
             }
         }
     }
