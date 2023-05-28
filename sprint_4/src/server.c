@@ -24,6 +24,136 @@
 
 // Use : ./serv <port>
 
+/**************************************************
+                    Constants
+***************************************************/
+
+// Maximum number of clients that can connect to the server
+#define MAX_CLIENT 25
+// Username size
+#define USERNAME_SIZE 10
+// Size of commands
+#define CMD_SIZE 10
+// Size of the message
+#define MSG_SIZE 960
+// Size of color
+#define COLOR_SIZE 10
+// Size of the channel name
+#define CHANNEL_SIZE 10
+// Buffer size for messages (this is the total size of the message)
+#define BUFFER_SIZE USERNAME_SIZE + USERNAME_SIZE + CHANNEL_SIZE + CMD_SIZE + MSG_SIZE + COLOR_SIZE
+
+
+/****************************************************
+                List Type Def and Functions
+*****************************************************/
+
+// This list will hold elements of type string
+// This list will be used to hold the names of the channels that each client is in
+
+typedef struct List List;
+typedef struct ElementList ElementList;
+
+struct ElementList{
+    char name[CHANNEL_SIZE];
+    ElementList *next;
+};
+
+
+struct List{
+    ElementList * premier;
+    int count;
+};
+
+
+// Creates a new list
+List * new_list(){
+    List * l = malloc(sizeof(List));
+    l->premier = NULL;
+    l->count = 0;
+    return l;
+}
+
+// Adds an element to the list
+void add(List * l, char * name){
+    ElementList * e = malloc(sizeof(ElementList));
+    strcpy(e->name, name);
+    e->next = NULL;
+    if(l->premier == NULL){
+        l->premier = e;
+    }else{
+        ElementList * current = l->premier;
+        while(current->next != NULL){
+            current = current->next;
+        }
+        current->next = e;
+    }
+    l->count++;
+}
+
+// Removes an element from the list
+void remove_element(List * l, char * name){
+    ElementList * current = l->premier;
+    ElementList * previous = NULL;
+    while(current != NULL){
+        if(strcmp(current->name, name) == 0){
+            if(previous == NULL){
+                l->premier = current->next;
+            }else{
+                previous->next = current->next;
+            }
+            free(current);
+            l->count--;
+            return;
+        }
+        previous = current;
+        current = current->next;
+    }
+}
+
+// Removes all the elements from the list
+void remove_all(List * l){
+    ElementList * current = l->premier;
+    ElementList * next;
+    while(current != NULL){
+        next = current->next;
+        free(current);
+        current = next;
+    }
+    l->premier = NULL;
+    l->count = 0;
+}
+
+// Checks if an element is in the list
+int is_in_list(List * l, char * name){
+    ElementList * current = l->premier;
+    while(current != NULL){
+        if(strcmp(current->name, name) == 0){
+            return 1;
+        }
+        current = current->next;
+    }
+    return 0;
+}
+
+// Checks if the list is empty
+int is_empty(List * l){
+    if(l->premier == NULL){
+        return 1;
+    }else{
+        return 0;
+    }
+}
+
+// Prints the list
+void print_list(List * l){
+    ElementList * current = l->premier;
+    while(current != NULL){
+        printf("%s\n", current->name);
+        current = current->next;
+    }
+}
+
 
 /*****************************************************
               Queue Type Def and Functions
@@ -98,19 +228,6 @@ pthread_t dequeue(Queue * q){
         Shared variables for clients
 ****************************************/
 
-// Maximum number of clients that can connect to the server
-#define MAX_CLIENT 25
-// Username size
-#define USERNAME_SIZE 10
-// Size of commands
-#define CMD_SIZE 10
-// Size of the message
-#define MSG_SIZE 960
-// Size of color
-#define COLOR_SIZE 10
-// Buffer size for messages (this is the total size of the message)
-#define BUFFER_SIZE USERNAME_SIZE + USERNAME_SIZE + CMD_SIZE + MSG_SIZE + COLOR_SIZE
-
 // Array of socket descriptors for the clients that are trying to connect
 // The clients that will be in this array are clients
 // that have the same username as a client that is already connected,
@@ -133,6 +250,12 @@ char tab_username[MAX_CLIENT][USERNAME_SIZE];
 
 // Mutex to protect the tab_username array
 pthread_mutex_t mutex_tab_username;
+
+// Array of Lists for the channels that each client is in
+List * tab_channel[MAX_CLIENT];
+
+// Mutex to protect the tab_channel array
+pthread_mutex_t mutex_tab_channel;
 
 // A semaphore to indicate the number of free spots in the tab_client array
 sem_t free_spot;
@@ -277,6 +400,8 @@ struct Message {
     // The username of the client who sent the message
     // It can be Server if the message is sent to the server
     char to[USERNAME_SIZE];
+    // The channel name
+    char channel[CHANNEL_SIZE];
     // The message
     char message[MSG_SIZE];
     // The color of the message
@@ -301,26 +426,31 @@ void send_to_all(int client_indice, Message * buffer) {
     }
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_client);
+    pthread_mutex_lock(&mutex_tab_channel);
     while( i < MAX_CLIENT){
         // We can't send the message to ourselves
         // also, if a client disconnects, we don't send the message to him
         if (tab_client[i] != 0 && i != client_indice) {
-            nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
-            if (nb_send == -1) {
-                perror("Erreur lors de l'envoi");
-                printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
-                exit(EXIT_FAILURE);
-            }
-            // If ever a client disconnect while we are sending the messages
-            if (nb_send == 0) {
-                printf("Le client: %d s'est deconnecte, donc le message ne s'est pas envoye a lui\n", i + 1);
-                // We don't break here because we want to send the message to the other clients
+            // If the client is in the same channel as the channel from which the message was sent
+            if(is_in_list(tab_channel[i], buffer->channel) == 1){
+                nb_send = send(tab_client[i], buffer, BUFFER_SIZE, 0);
+                if (nb_send == -1) {
+                    perror("Erreur lors de l'envoi");
+                    printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
+                    exit(EXIT_FAILURE);
+                }
+                // If ever a client disconnect while we are sending the messages
+                if (nb_send == 0) {
+                    printf("Le client: %d s'est deconnecte, donc le message ne s'est pas envoye a lui\n", i + 1);
+                    // We don't break here because we want to send the message to the other clients
+                }
             }
         }
         i = i + 1;
     }
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_client);
+    pthread_mutex_unlock(&mutex_tab_channel);
 }
 
 // A function that will handle the SIGINT signal, it will tell the clients that the server is closing
@@ -1024,6 +1154,14 @@ void * client_thread(void * dS_client_connection) {
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_Threads_id);
 
+    // We reset the channel list of the client
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_tab_channel);
+    remove_all(tab_channel[client_indice]);
+    add(tab_channel[client_indice], "global");
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_tab_channel);
+
     // We put the thread id in the shared queue of ended threads
     // Lock the mutex
     pthread_mutex_lock(&mutex_ended_threads);
@@ -1199,6 +1337,15 @@ int main(int argc, char *argv[]) {
     k = k + 1;
     }
 
+  // We initialise every List of channels for each clients
+  // Every client is in the global channel by default
+  int j = 0;
+  while (j < MAX_CLIENT) {
+    tab_channel[j] = new_list();
+    add(tab_channel[j], "global");
+    j = j + 1;
+  }
+
 
   // Initialise the semaphores
   sem_init(&free_spot, 0, MAX_CLIENT);
@@ -1209,6 +1356,8 @@ int main(int argc, char *argv[]) {
   pthread_mutex_init(&mutex_tab_username, NULL);
   pthread_mutex_init(&mutex_ended_threads, NULL);
   pthread_mutex_init(&mutex_Threads_id, NULL);
+  pthread_mutex_init(&mutex_tab_client, NULL);
+  pthread_mutex_init(&mutex_tab_channel, NULL);
 
   // Initialise the shared queue of disconnected clients
   ended_threads = new_queue();
