@@ -38,6 +38,8 @@
 #define CHANNEL_SIZE 10 // Size of the channel name
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH + CHANNEL_SIZE// taille maximal du message envoyé au serveur
 #define FILES_DIRECTORY "../src/client_files/" // répertoire courant
+#define PORT_CHANNEL 8080 // port pour les channels
+
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
 char *color; // couleur attribuée à l'utilisateur
@@ -47,8 +49,12 @@ int num_files; // nombre de fichiers dans le menu, 0 signifie que le menu n'est 
 int menu = 0; // 0 si le menu n'est pas ouvert, 1 si le menu est ouvert pour l'upload, 2 si le menu est ouvert pour le download, 3 si le menu est ouvert pour le choix du channel
 int index_cursor = 0; // index_cursor du fichier sélectionné dans le menu de téléchargement
 char *files_array[100];
-char *channel_array[200];
-int channel_connect[200];
+char *channel_array[200]; // tableau contenant les noms des channels
+int channel_connect[200]; // tableau contenant 1 si l'utilisateur est connecté au channel, 0 sinon
+int socket_channel_address; // socket du channel
+int *socket_server;
+
+
 // This queue will hold elements of type pthread_t
 typedef struct Queue Queue;
 typedef struct Element Element;
@@ -70,8 +76,9 @@ Queue * ended_threads;
 // Mutex to protect the ended_threads queue
 pthread_mutex_t mutex_ended_threads;
 
-
+// Signatures des fonctions
 void *afficher(int color, char *msg, void *args);
+void *channel_thread(void *args);
 
 
 // Struct for the messages
@@ -94,6 +101,134 @@ struct Message {
     char color[COLOR_LENGTH];
 };
 
+
+/****************************************************
+                List Type Def and Functions
+*****************************************************/
+
+// This list will hold elements of type string and int
+// This list will be used to hold the names and sockets of the channels that each client is in
+
+typedef struct List List;
+typedef struct ElementList ElementList;
+
+struct ElementList{
+    char name[CHANNEL_SIZE];
+    int socket;
+    ElementList *next;
+};
+
+
+struct List{
+    ElementList *premier;
+    int count;
+};
+
+
+// Creates a new list
+List *new_list(){
+    List *l = malloc(sizeof(List));
+    l->premier = NULL;
+    l->count = 0;
+    return l;
+}
+
+// Adds an element to the list
+void add(List *l, char *name, int socket){
+    ElementList *e = malloc(sizeof(ElementList));
+    strcpy(e->name, name);
+    e->socket = socket;
+    e->next = NULL;
+    if(l->premier == NULL){
+        l->premier = e;
+    }else{
+        ElementList *current = l->premier;
+        while(current->next != NULL){
+            current = current->next;
+        }
+        current->next = e;
+    }
+    l->count++;
+}
+
+// Removes an element from the list
+void remove_element(List *l, char *name){
+    ElementList *current = l->premier;
+    ElementList *previous = NULL;
+    while(current != NULL){
+        if(strcmp(current->name, name) == 0){
+            if(previous == NULL){
+                l->premier = current->next;
+            }else{
+                previous->next = current->next;
+            }
+            free(current);
+            l->count--;
+            return;
+        }
+        previous = current;
+        current = current->next;
+    }
+}
+
+// Removes all the elements from the list
+void remove_all(List *l){
+    ElementList *current = l->premier;
+    ElementList *next;
+    while(current != NULL){
+        next = current->next;
+        free(current);
+        current = next;
+    }
+    l->premier = NULL;
+    l->count = 0;
+}
+
+// Checks if an element is in the list
+int is_in_list(List *l, char *name){
+    ElementList *current = l->premier;
+    while(current != NULL){
+        if(strcmp(current->name, name) == 0){
+            return 1;
+        }
+        current = current->next;
+    }
+    return 0;
+}
+
+// Checks if the list is empty
+int is_empty(List *l){
+    if(l->premier == NULL){
+        return 1;
+    }else{
+        return 0;
+    }
+}
+
+// Prints the list
+void print_list(List *l){
+    ElementList *current = l->premier;
+    while(current != NULL){
+        printf("Name: %s, Socket: %d\n", current->name, current->socket);
+        current = current->next;
+    }
+}
+
+
+// Get the socket associated with a name in the list
+int get_socket(List *l, char *name) {
+    ElementList *current = l->premier;
+    while (current != NULL) {
+        if (strcmp(current->name, name) == 0) {
+            return current->socket;
+        }
+        current = current->next;
+    }
+    return -1; // Return -1 if the name is not found in the list
+}
+
+// creer une nouvelle liste contenant les noms des channels et la socket du channel
+List *socket_channel_list;
 
 
 /*****************************************************
@@ -388,6 +523,8 @@ void *channel_menu(int *ds, char *channels){
     disableCanonicalMode();
 
     Message request[BUFFER_SIZE];
+    pthread_t thread_channel;
+
     //Efface les deux dernières lignes
     printf("\033[2K\r\033[1A\033[2K\r\033[1A\033[2K\r");
 
@@ -449,6 +586,9 @@ void *channel_menu(int *ds, char *channels){
                 // Sinon on le connecte
                 channel_connect[index_cursor - 1] = 1;
                 strcpy(request->cmd, "connect");
+                // connection au channel
+                int index_channel = index_cursor - 1;
+                pthread_create (&thread_channel, NULL, channel_thread, &index_channel);
             }
             strcpy(request->from, pseudo);
             strcpy(request->to, "server");
@@ -582,7 +722,6 @@ void getCurrentTime(char* timeString, int maxBufferSize) {
     // Format the time as a string
     strftime(timeString, maxBufferSize, "%H:%M | ", timeInfo);
 }
-
 
 
 
@@ -924,6 +1063,90 @@ void * download_file(void* param){
     pthread_exit(0);
 }
 
+/*******************************************
+            THREADS DES CHANNELS
+********************************************/
+
+void * channel_thread(void *arg){
+    //prend en argument le nom du salon
+
+    char *channel = (char*) arg;
+
+    char command[100];
+    sprintf(command, "gnome-terminal -- ./client_salon %s %d", server_ip, PORT_CHANNEL);
+    system(command);
+
+
+    int newSocket;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+
+    if ((newSocket = accept(socket_channel_address, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
+        perror("accept failed");
+        exit(EXIT_FAILURE);
+    }
+
+
+    // verifier si le channel est deja ouvert
+    if (is_in_list(socket_channel_list, channel) == 1){
+        //printf("Channel deja ouvert\n");
+        close(newSocket);
+        pthread_exit(0);
+    }
+
+    // ajouter le channel a la liste des channels ouvert
+    add(socket_channel_list, channel, newSocket);
+
+    Message request[BUFFER_SIZE];
+    while (1){
+        int nb_recv = recv(newSocket, request, BUFFER_SIZE, 0);
+        if (nb_recv == -1) {
+            perror("Erreur lors de la reception du message");
+            close(newSocket);
+            exit(EXIT_FAILURE);
+        } else if (nb_recv == 0) {
+            close(newSocket);
+            break;
+        }
+    
+        if (strcmp(request->cmd, "exit") == 0){
+            close(newSocket);
+            break;
+        } else {
+            strcpy(request->channel, channel);
+            int nb_send = send(*socket_server, request, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                close(*socket_server);
+                exit(EXIT_FAILURE);
+            } else if (nb_send == 0) {
+                // Connection fermée par le client ou le serveur
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                close(*socket_server);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+    }
+
+    //clean
+    remove_element(socket_channel_list, channel);
+
+    pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
+    
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_ended_threads);
+    // We put the thread id in the queue of ended threads
+    enqueue(ended_threads, ThreadId);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_ended_threads);
+
+    // Increment the semaphore to indicate that a thread has ended
+    sem_post(&thread_end);
+    
+    pthread_exit(0);
+}
+
 
 /***************************************
         Thread Cleanup Handler
@@ -995,8 +1218,34 @@ void *readMessage(void *arg) {
             break;
         }
 
+        if (strcmp(response->cmd, "fin") == 0) {
+            // Si le serveur envoie "fin", on ferme la connexion
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(dS);
+            break;
+        }
 
-        print_message(response);
+        if (strcmp(response->channel, "global") == 0) {
+            print_message(response);
+        } else {
+            int socket_channel = get_socket(socket_channel_list, response->channel);
+            if (socket_channel != -1){
+                int nb_send = send(socket_channel, response, BUFFER_SIZE, 0);
+                if (nb_send == -1) {
+                    perror("Erreur lors de l'envoi du message");
+                    close(socket_channel);
+                    exit(EXIT_FAILURE);
+                } else if (nb_send == 0) {
+                    // Connection fermée par le client ou le serveur
+                    afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                    close(socket_channel);
+                    exit(EXIT_FAILURE);
+                }
+            } else { // si le channel n'est pas ouvert
+                print_message(response);
+            } 
+        }
+
     }
 
     free(response);
@@ -1284,8 +1533,6 @@ void *writeMessage(void *arg) {
         }
 
 
-
-
         // Envoie le message au serveur
         nb_send = send(dS, request, BUFFER_SIZE, 0);
         if (nb_send == -1) {
@@ -1361,6 +1608,7 @@ int main(int argc, char *argv[]) {
     printf("Debut programme client\n");
 
     int dS = socket(PF_INET, SOCK_STREAM, 0);
+    socket_server = &dS;
     if (dS == -1) {
         perror("Erreur creation socket");
         exit(EXIT_FAILURE);
@@ -1478,6 +1726,33 @@ int main(int argc, char *argv[]) {
 
     } while (pseudo_valide == 0);
 
+    // Creation de socket pour communiquer avec les channels
+    struct sockaddr_in address;
+    
+    // Creation du socket
+    if ((socket_channel_address = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT_CHANNEL);
+    
+    // Bind la socket au port 8080
+    if (bind(socket_channel_address, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Ecoute sur la socket
+    if (listen(socket_channel_address, 3) < 0) {
+        perror("listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+
+    socket_channel_list = new_list();
 
 
     // Gestion du signal SIGINT (Ctrl+C)
