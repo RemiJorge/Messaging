@@ -436,6 +436,7 @@ void send_to_all(int client_indice, Message * buffer) {
     // If the channel is empty, we send to global
     if (strcmp(buffer->channel, "") == 0) {
         strcpy(buffer->channel, "global");
+        // This shouldn't happen, so we print a warning
         printf("Warning: client has forgotten channel");
     }
 
@@ -849,6 +850,7 @@ void * download_file_thread(void * arg){
 
 // A function for a thread that will send the list of channels available
 // and let the client connect and disconnect from channels
+// The client will also be able to create and delete a channel
 
 void * channel_thread(void * arg){
 
@@ -862,9 +864,6 @@ void * channel_thread(void * arg){
     Message * buffer = &msg_buffer; // A pointer to the buffer
     int dS_thread_channel; // The socket for the download for the accept
     int continue_thread = 1; // A variable to know if we continue the thread or not
-    //long file_size; // The size of the file
-    //char path[MSG_SIZE]; // The path of the file
-    //FILE * file; // The file
 
     pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
 
@@ -985,6 +984,109 @@ void * channel_thread(void * arg){
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a quitte le channel %s\n", indice_client + 1, buffer->channel);
             }
+
+            // If the buffer->cmd is "create" we create a channel
+            // The client sends us the name of the channel he wants to create in buffer->channel
+            // and then a description of the channel in buffer->message in the next message
+            if (strcmp(buffer->cmd, "create") == 0) {
+                char path[MSG_SIZE]; // The path of the file
+                FILE * file; // The file
+                // We concatenate the path of the file
+                strcpy(path, "../src/server_channels/");
+                strcat(path, buffer->channel);
+
+                // We open the file
+                file = fopen(path, "w");
+                if (file == NULL) {
+                    perror("Erreur lors de la creation du fichier");
+                    continue_thread = 0;
+                }
+
+                // We receive the description of the channel
+                nb_recv = recv(dS_thread_channel, buffer, BUFFER_SIZE, 0);
+                if (nb_recv == -1) {
+                    perror("Erreur lors de la reception");
+                    exit(EXIT_FAILURE);
+                }
+                // If the client disconnected, we stop the thread
+                if (nb_recv == 0) {
+                    printf("Le client s'est deconnecte dans le channel co/deco\n");
+                    fclose(file);
+                    continue_thread = 0;
+                    break;
+                }
+
+                // We write the description of the channel in the file
+                fprintf(file, "%s", buffer->message);
+
+                // We close the file
+                fclose(file);
+                printf("Le channel %s a ete cree\n", buffer->channel);
+
+                // We add the client to the channel
+                // Lock the mutex
+                pthread_mutex_lock(&mutex_tab_channel);
+                add(tab_channel[indice_client], buffer->channel);
+                // Unlock the mutex
+                pthread_mutex_unlock(&mutex_tab_channel);
+                printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);
+
+                // Once the channel is created, the client is no longer in the menu
+                continue_thread = 0;
+                break;
+            }
+
+            // If the buffer->cmd is "delete" we delete a channel
+            // The client sends us the name of the channel he wants to delete in buffer->channel
+            if (strcmp(buffer->cmd, "delete") == 0) {
+                char path[MSG_SIZE]; // The path of the file
+                // We concatenate the path of the file
+                strcpy(path, "../src/server_channels/");
+                strcat(path, buffer->channel);
+
+                // We delete the file
+                if (remove(path) == 0) {
+                    printf("Le channel %s a ete supprime\n", buffer->channel);
+                }
+                else {
+                    printf("Erreur lors de la suppression du channel %s\n", buffer->channel);
+                }
+
+                // We remove the client from the channel
+                // Lock the mutex
+                pthread_mutex_lock(&mutex_tab_channel);
+                remove_element(tab_channel[indice_client], buffer->channel);
+                // Unlock the mutex
+                pthread_mutex_unlock(&mutex_tab_channel);
+                printf("Le client %d a quitte le channel %s\n", indice_client + 1, buffer->channel);
+
+                // We need to send a message to all the clients in the channel to tell them that the channel has been deleted
+                strcpy(buffer->cmd, "end");
+                strcpy(buffer->to, "all");
+                strcpy(buffer->from, "Serveur");
+                strcpy(buffer->message, "Le channel a ete supprime");
+                send_to_all(-1, buffer);
+
+                // We remove the channel from all the clients
+                int i = 0;
+                // Lock the mutex
+                pthread_mutex_lock(&mutex_tab_channel);
+                pthread_mutex_lock(&mutex_tab_client);
+                while (i < MAX_CLIENT) {
+                    if (tab_client[i] != 0) {
+                        remove_element(tab_channel[i], buffer->channel);
+                    }
+                    i = i + 1;
+                }
+                // Unlock the mutex
+                pthread_mutex_unlock(&mutex_tab_channel);
+                pthread_mutex_unlock(&mutex_tab_client);
+
+                // Once the channel is deleted, the client is no longer in the menu
+                continue_thread = 0;
+                break;
+            }
+
         }
     }
 
