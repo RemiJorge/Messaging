@@ -1056,6 +1056,7 @@ void *writeMessage(void *arg) {
         strcpy(request->cmd, "");
         strcpy(request->from, pseudo);
         strcpy(request->to, "all");
+        strcpy(request->channel, "global");
         strcpy(request->message, input);
         strcpy(request->color, color);
 
