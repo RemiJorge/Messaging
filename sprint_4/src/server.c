@@ -275,6 +275,9 @@ int download_socket;
 // Mutex to protect the download_socket
 pthread_mutex_t mutex_download_socket;
 
+// A socket to deal with client channel connections and disconnections
+int channel_socket;
+
 
 /**************************************
       Shared variables for threads
@@ -427,6 +430,9 @@ void send_to_all(int client_indice, Message * buffer) {
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_client);
     pthread_mutex_lock(&mutex_tab_channel);
+
+    printf("Channel sent to : %s by client : %d \n", buffer->channel, client_indice + 1);
+
     while( i < MAX_CLIENT){
         // We can't send the message to ourselves
         // also, if a client disconnects, we don't send the message to him
@@ -835,6 +841,162 @@ void * download_file_thread(void * arg){
 } 
 
 
+// A function for a thread that will send the list of channels available
+// and let the client connect and disconnect from channels
+
+void * channel_thread(void * arg){
+
+    int indice_client = *(int *) arg; // The indice of the client in the tab_client array
+
+    printf("Channel thread for client: %d\n", indice_client + 1);
+
+    int nb_recv; // The number of bytes received
+    int nb_send; // The number of bytes sent
+    Message msg_buffer; // The buffer for the messages
+    Message * buffer = &msg_buffer; // A pointer to the buffer
+    int dS_thread_channel; // The socket for the download for the accept
+    int continue_thread = 1; // A variable to know if we continue the thread or not
+    //long file_size; // The size of the file
+    //char path[MSG_SIZE]; // The path of the file
+    //FILE * file; // The file
+
+    pthread_t ThreadId = pthread_self(); // The id of the thread, will be used to cleanup thread once finished
+
+    // Initialise file_addr and length
+    struct sockaddr_in file_addr;
+    socklen_t length_file_addr;
+
+    // We accept the connection
+    dS_thread_channel = accept(channel_socket, (struct sockaddr *) &file_addr, &length_file_addr);
+    if (dS_thread_channel == -1) {
+        perror("Erreur lors de l'accept");
+        exit(EXIT_FAILURE);
+    }
+
+    // Directory path
+    const char* directory_path = "../src/server_channels/";
+
+    // Open the directory
+    DIR* directory = opendir(directory_path);
+    if (directory == NULL) {
+        printf("Unable to open directory.\n");
+        continue_thread = 0;
+    }
+    
+    if (continue_thread == 1){
+        // Read directory entries
+        struct dirent* entry;
+        char file_list[MSG_SIZE];
+
+        // Put \0 at the beginning of the message to avoid concatenation problems
+        buffer->message[0] = '\0';
+
+        // Concatenate a "/" at the beginning of the message
+        strcat(buffer->message, "/");
+
+
+        while ((entry = readdir(directory)) != NULL) {
+            // Exclude "." and ".." directories
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                // Copy the channel name to the file_list
+                strncpy(file_list, entry->d_name, sizeof(file_list));
+                file_list[sizeof(file_list) - 1] = '\0';  // Ensure null-termination
+
+                // Check if the user is in the channel
+                // If he is, we add a * at the start of the channel name
+                if (is_in_list(tab_channel[indice_client], file_list) == 1){
+                    strcat(buffer->message, "*");
+                }
+
+                // Concatentate the file_list to buffer->message
+                strcat(buffer->message, file_list);
+                strcat(buffer->message, "/");
+
+            }
+        }
+
+        // Close the directory
+        closedir(directory);
+
+        printf("Le message envoye est: %s\n", buffer->message);
+
+        // We send the list of channels
+        strcpy(buffer->cmd, "salon");
+        strcpy(buffer->to, buffer->from);
+        strcpy(buffer->from, "Serveur");
+        nb_send = send(dS_thread_channel, buffer, BUFFER_SIZE, 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi");
+            exit(EXIT_FAILURE);
+        }
+        // If the client disconnected, we stop the thread
+        if (nb_send == 0) {
+            printf("Le client s'est deconnecte dans le download\n");
+            continue_thread = 0;
+        }
+    }
+
+    if (continue_thread == 1){
+        while(1){
+            // We receive the a message from the client
+            nb_recv = recv(dS_thread_channel, buffer, BUFFER_SIZE, 0);
+            if (nb_recv == -1) {
+                perror("Erreur lors de la reception");
+                exit(EXIT_FAILURE);
+            }
+            // If the client disconnected, we stop the thread
+            if (nb_recv == 0) {
+                continue_thread = 0;
+                break;
+            }
+            
+            // If the buffer->cmd is "exit" we stop the thread
+            if (strcmp(buffer->cmd, "exit") == 0) {
+                continue_thread = 0;
+                break;
+            }
+
+            // If the buffer->cmd is "connect" we add the client to the channel
+            if (strcmp(buffer->cmd, "connect") == 0) {
+                // Lock the mutex
+                pthread_mutex_lock(&mutex_tab_channel);
+                // We add the client to the channel
+                add(tab_channel[indice_client], buffer->channel);
+                // Unlock the mutex
+                pthread_mutex_unlock(&mutex_tab_channel);
+            }
+
+            // If the buffer->cmd is "disc" we remove the client from the channel
+            if (strcmp(buffer->cmd, "disc") == 0) {
+                // Lock the mutex
+                pthread_mutex_lock(&mutex_tab_channel);
+                // We remove the client from the channel
+                remove_element(tab_channel[indice_client], buffer->channel);
+                // Unlock the mutex
+                pthread_mutex_unlock(&mutex_tab_channel);
+            }
+        }
+    }
+
+    // We close the socket
+    close(dS_thread_channel);
+    
+    // Lock the mutex
+    pthread_mutex_lock(&mutex_ended_threads);
+    // We put the thread id in the queue of ended threads
+    enqueue(ended_threads, ThreadId);
+    // Unlock the mutex
+    pthread_mutex_unlock(&mutex_ended_threads);
+
+    // Increment the semaphore to indicate that a thread has ended
+    sem_post(&thread_end);
+
+    printf("Channel connect/disconnect thread end\n");
+    pthread_exit(0);
+
+}
+
+
 
 
 /*******************************************
@@ -1108,6 +1270,24 @@ void * client_thread(void * dS_client_connection) {
             continue;
         }
 
+        // If the client sens "salon", we launch a thread to send him the list of channels
+        // And let him connect and disconnect freely
+        if (strcmp(buffer->cmd, "salon") == 0) {
+            printf("SALON detected\n");
+            printf("client indice before: %d\n", client_indice + 1);
+
+            // We launch a thread to send the list of channels
+            pthread_t thread_salon;
+
+            if (pthread_create(&thread_salon, NULL, channel_thread, (void *) &client_indice) != 0) {
+                perror("Erreur lors de la creation du thread salon");
+                printf("L'erreur est dans le thread du client: %d\n", client_indice + 1);
+                exit(EXIT_FAILURE);
+            }
+            printf("Thread salon cree\n");
+            continue;
+        }
+
 
         // By default, we send the message to all the clients connected,
         // using the function send_to_all
@@ -1258,6 +1438,13 @@ int main(int argc, char *argv[]) {
   }
   printf("Socket cree\n");
 
+  channel_socket = socket(PF_INET, SOCK_STREAM, 0);
+    if(channel_socket == -1) {
+        perror("Erreur lors de la creation du socket");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket cree\n");
+
   // Voici la doc des structs utilises
   /*
   struct sockaddr_in {
@@ -1304,6 +1491,16 @@ int main(int argc, char *argv[]) {
     }
     printf("Socket download nomme\n");
 
+    struct sockaddr_in ad_channel;
+    ad_channel.sin_family = AF_INET;
+    ad_channel.sin_addr.s_addr = INADDR_ANY ;
+    ad_channel.sin_port = htons(atoi(argv[1]) + 3) ;
+    if(bind(channel_socket, (struct sockaddr*)&ad_channel, sizeof(ad_channel)) == -1) {
+        perror("Erreur lors du nommage du socket");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket channel nomme\n");
+
   // Ecoute
 
     if(listen(dS, 10) == -1) {
@@ -1323,6 +1520,12 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     printf("Mode ecoute download\n");
+
+    if(listen(channel_socket, 10) == -1) {
+        perror("Erreur lors du passage en mode ecoute");
+        exit(EXIT_FAILURE);
+    }
+    printf("Mode ecoute channel\n");
 
   // We put zeros in the arrays to show that the clients are not connected
   // and that the threads are not created
