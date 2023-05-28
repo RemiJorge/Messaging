@@ -433,6 +433,12 @@ void send_to_all(int client_indice, Message * buffer) {
 
     printf("Channel sent to : %s by client : %d \n", buffer->channel, client_indice + 1);
 
+    // If the channel is empty, we send to global
+    if (strcmp(buffer->channel, "") == 0) {
+        strcpy(buffer->channel, "global");
+        printf("Warning: client has forgotten channel");
+    }
+
     while( i < MAX_CLIENT){
         // We can't send the message to ourselves
         // also, if a client disconnects, we don't send the message to him
