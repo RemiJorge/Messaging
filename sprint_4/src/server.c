@@ -1128,6 +1128,7 @@ void * client_thread(void * dS_client_connection) {
         strcpy(buffer->to, "all");
         // Unlock the mutex
         pthread_mutex_unlock(&mutex_tab_username);
+        strcpy(buffer->channel, "global");
         strcpy(buffer->message, "Je me connecte. Bonjour!");
         send_to_all(client_indice, buffer);
     }
@@ -1143,6 +1144,7 @@ void * client_thread(void * dS_client_connection) {
         }
         if (nb_recv == 0) {
             printf("Client %d s'est deconnecte\n", client_indice + 1);
+            strcpy(buffer->channel, "global");
             strcpy(buffer->message, "Je me deconnecte. Au revoir!");
             // We send a message to the other clients to tell them that this client has disconnected
             send_to_all(client_indice, buffer);
@@ -1154,6 +1156,7 @@ void * client_thread(void * dS_client_connection) {
         // If the client sends "fin", we break and close his socket
         if (strcmp(buffer->cmd, "fin") == 0) {
             printf("Fin de la discussion pour client: %d\n", client_indice + 1);
+            strcpy(buffer->channel, "global");
             strcpy(buffer->message, "Je me deconnecte. Au revoir!");
             // We send a message to the other clients to tell them that this client has disconnected
             send_to_all(client_indice, buffer);
@@ -1259,6 +1262,7 @@ void * client_thread(void * dS_client_connection) {
            
             // We send a message to the other clients to tell them that this client has uploaded a file
             strcpy(buffer->cmd, "upload");
+            strcpy(buffer->channel, "global");
             strcpy(buffer->message, "I am uploading a file!");
             send_to_all(client_indice, buffer);
             continue;
