@@ -340,7 +340,8 @@ void* display_channel(){
     // les fichiers à afficher sont dans channel_array
     printf("\033[35m---------- Choisissez des salons ----------\n");
     printf("   retour au tchat\n");
-    for (int i = 0; i < num_files-1; i++){
+    printf("   creer un salon\n");
+    for (int i = 0; i < num_files-2; i++){
 
         if (channel_connect[i] == 1){
             printf("   *%s\n", channel_array[i]);
@@ -536,6 +537,7 @@ void *channel_menu(int *ds, char *channels){
     // le tableau channel_connect contient 1 si l'utilisateur est connecté à ce channel, 0 sinon
     char *channel = strtok(channels, "/");
     int i = 0;
+    int nb_send;
 
     while (channel != NULL) {
         if (channel[0] == '*'){
@@ -549,7 +551,7 @@ void *channel_menu(int *ds, char *channels){
         i++;
     }
 
-    num_files = i + 1;
+    num_files = i + 2;
     display_channel();
     menu = 3;
     int c;
@@ -573,19 +575,26 @@ void *channel_menu(int *ds, char *channels){
         }
         // Si l'utilisateur appuie sur la touche Entrée et index_cursor != 0
         // on recupère le nom du channel sélectionné et on l'envoie au serveur avec la cmd "connect"
-        if (c == '\n' && index_cursor != 0) {
+        if (c == '\n' && index_cursor != 0 && index_cursor != 1) {
             char* channel = NULL;
             if (num_files > 0) {
-                channel = channel_array[index_cursor - 1];
+                channel = channel_array[index_cursor - 2];
             }
             // Envoie le nom du channel au serveur
-            if (channel_connect[index_cursor - 1] == 1){
+            if (channel_connect[index_cursor - 2] == 1){
                 // Si l'utilisateur est déjà connecté au channel, on le déconnecte
-                channel_connect[index_cursor - 1] = 0;
+                channel_connect[index_cursor - 2] = 0;
                 strcpy(request->cmd, "disc");
+                // obtenir la socket du channel
+                int socket_channel = get_socket(socket_channel_list, channel);
+                //deconnection du channel
+                if (socket_channel != -1){
+                    close(socket_channel);
+                    remove_element(socket_channel_list, channel);
+                }
             }else{
                 // Sinon on le connecte
-                channel_connect[index_cursor - 1] = 1;
+                channel_connect[index_cursor - 2] = 1;
                 strcpy(request->cmd, "connect");
                 // connection au channel
                 if (channel != NULL){
@@ -597,7 +606,7 @@ void *channel_menu(int *ds, char *channels){
             strcpy(request->channel, channel);
             strcpy(request->message, "");
             strcpy(request->color, color);
-            int nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
+            nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
             if (nb_send == -1) {
                 perror("Erreur lors de l'envoi du message");
                 close(*(int*)ds);
@@ -616,10 +625,85 @@ void *channel_menu(int *ds, char *channels){
             display_channel();
         }
 
-    } while (c != '\n' || index_cursor != 0);
+    } while (c != '\n' || (index_cursor != 0 && index_cursor != 1));
     // Sort de la boucle lorsque l'utilisateur appuie sur la touche Entrée et index_cursor == 0
 
     enableCanonicalMode();
+
+    if (index_cursor == 1){
+        for (int i = 0; i <= num_files; i++) {
+            printf("\033[1A\033[2K\r");
+        }
+
+        printf("\n\033[35m");
+        printf("---------- Entrez un nom de fichier (max %d caracteres) -----------\n", CHANNEL_SIZE - 1);
+        //Met le texte en gras
+        printf("\033[1m");
+        printf("Saisie : ");
+
+        //Remet le texte en normal
+        printf("\033[0m");
+        //Flush le buffer de stdout
+        fflush(stdout);
+
+        fgets(request->channel, CHANNEL_SIZE, stdin);
+        char *pos = strchr(request->channel, '\n');
+        if (pos != NULL){
+            *pos = '\0';
+        }
+
+        strcpy(request->cmd, "create");
+        strcpy(request->from, pseudo);
+        strcpy(request->to, "server");
+        strcpy(request->message, "");
+        strcpy(request->color, color);
+        nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi du message");
+            close(*(int*)ds);
+            exit(EXIT_FAILURE);
+        } else if (nb_send == 0) {
+            // Connection fermée par le client ou le serveur
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(*(int*)ds);
+            exit(EXIT_FAILURE);
+        }
+
+
+        printf("\n\033[35m");
+        printf("---------- Entrez une description (max %d caracteres) -----------\n", MSG_LENGTH - 1);
+        //Met le texte en gras
+        printf("\033[1m");
+        printf("Saisie : ");
+
+        //Remet le texte en normal
+        printf("\033[0m");
+        //Flush le buffer de stdout
+        fflush(stdout);
+
+        fgets(request->message, MSG_LENGTH, stdin);
+        pos = strchr(request->message, '\n');
+        if (pos != NULL){
+            *pos = '\0';
+        }
+
+        nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
+        if (nb_send == -1) {
+            perror("Erreur lors de l'envoi du message");
+            close(*(int*)ds);
+            exit(EXIT_FAILURE);
+        } else if (nb_send == 0) {
+            // Connection fermée par le client ou le serveur
+            afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            close(*(int*)ds);
+            exit(EXIT_FAILURE);
+        }
+
+        for (int i = 0; i <= 5; i++) {
+            printf("\033[1A\033[2K\r");
+        }
+        
+    }
 
     //envoie exit au serveur pour sortir du menu
     strcpy(request->cmd, "exit");
@@ -628,7 +712,7 @@ void *channel_menu(int *ds, char *channels){
     strcpy(request->channel, "");
     strcpy(request->message, "");
     strcpy(request->color, color);
-    int nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
+    nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
     if (nb_send == -1) {
         perror("Erreur lors de l'envoi du message");
         close(*(int*)ds);
@@ -640,14 +724,17 @@ void *channel_menu(int *ds, char *channels){
         exit(EXIT_FAILURE);
     }
 
-    for (int i = 0; i <= num_files; i++) {
-        printf("\033[1A\033[2K\r");
+    if (index_cursor != 1){
+        for (int i = 0; i <= num_files + 1; i++) {
+            printf("\033[1A\033[2K\r");
+        }
     }
 
     menu = 0;
     num_files = 0;
     index_cursor = 0;
     afficher(31, "", NULL);
+
 
     return NULL;
 }
@@ -1075,8 +1162,10 @@ void * channel_thread(void *arg){
     char *channel = (char*) arg;
 
     char command[100];
-    sprintf(command, "gnome-terminal -- ./client_salon %s %d", server_ip, port_channel);
+    //prend en parametre le port, le pseudo et la couleur sans le \ devant la couleur
+    sprintf(command, "gnome-terminal -- ./client_salon %d %s %s", port_channel, pseudo, color);
     system(command);
+
 
 
     int newSocket;
