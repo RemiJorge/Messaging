@@ -485,12 +485,14 @@ void handle_interrupt(int signum){
     close(dS);
     close(upload_socket);
     close(download_socket);
+    close(channel_socket);
     // We close the sockets of all of the clients
     int i = 0;
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_client_connecting);
     while (i < MAX_CLIENT) {
         if (tab_client_connecting[i] != 0) {
+            pthread_cancel(Threads_id[i]);
             close(tab_client_connecting[i]);
         }
         i = i + 1;
