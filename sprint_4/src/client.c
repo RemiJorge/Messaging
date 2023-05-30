@@ -672,7 +672,7 @@ void *channel_menu(int *ds, char *channels){
         enableCanonicalMode();
 
         printf("\n\033[35m");
-        printf("---------- Entrez un nom du salon (max %d caracteres) -----------\n", CHANNEL_SIZE - 1);
+        printf("---------- Entrez un nom du salon (max %d caracteres) -----------\n", CHANNEL_SIZE - 2);
         //Met le texte en gras
         printf("\033[1m");
         printf("Nom du salon: ");
@@ -689,6 +689,8 @@ void *channel_menu(int *ds, char *channels){
         if (pos != NULL){
             *pos = '\0';
         }
+
+
         strcpy(request->cmd, "create");
         strcpy(request->from, pseudo);
         strcpy(request->to, "server");
