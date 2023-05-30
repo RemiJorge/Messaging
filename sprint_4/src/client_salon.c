@@ -327,6 +327,7 @@ void *readMessage(void *arg) {
         } else if (nb_recv == 0) {
             // Connection closed by client or server
             afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            pthread_cancel(writeThread);
             close(dS);
             break;
         }
@@ -435,6 +436,7 @@ void *writeMessage(void *arg) {
             } else if (nb_send == 0) {
                 // Connection fermée par le client ou le serveur
                 afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                pthread_cancel(readThread);
                 close(dS);
                 break;
             }
@@ -480,6 +482,7 @@ void *writeMessage(void *arg) {
         } else if (nb_send == 0) {
             // Connection fermée par le client ou le serveur
             afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            pthread_cancel(readThread);
             close(dS);
             break;
         }

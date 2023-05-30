@@ -478,6 +478,7 @@ void handle_interrupt(int signum){
     strcpy(buffer->cmd, "fin");
     strcpy(buffer->from, "Serveur");
     strcpy(buffer->to, "all");
+    strcpy(buffer->channel, "global");
     strcpy(buffer->message, "Le serveur va fermer. Au revoir!");
     send_to_all(-1, buffer);
     // We close the sockets
