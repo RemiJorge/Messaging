@@ -44,7 +44,7 @@ char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[
 char color[COLOR_LENGTH]; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur
-char *channel_nom[CHANNEL_SIZE]; // nom du salon
+char channel_nom[CHANNEL_SIZE]; // nom du salon
 
 // The thread ids of the read and write threads
 pthread_t readThread;
