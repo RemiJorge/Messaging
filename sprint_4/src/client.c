@@ -596,9 +596,9 @@ void *channel_menu(int *ds, char *channels){
                 channel = channel_array[index_cursor - 2];
             }
             // Envoie le nom du channel au serveur
-            if (channel_connect[index_cursor - 2] == 1){
+            if (channel_connect[index_cursor - 3] == 1){
                 // Si l'utilisateur est déjà connecté au channel, on le déconnecte
-                channel_connect[index_cursor - 2] = 0;
+                channel_connect[index_cursor - 3] = 0;
                 strcpy(request->cmd, "disc");
                 // obtenir la socket du channel
                 int socket_channel = get_socket(socket_channel_list, channel);
@@ -609,7 +609,7 @@ void *channel_menu(int *ds, char *channels){
                 }
             }else{
                 // Sinon on le connecte
-                channel_connect[index_cursor - 2] = 1;
+                channel_connect[index_cursor - 3] = 1;
                 strcpy(request->cmd, "connect");
                 // connection au channel
                 if (channel != NULL){
@@ -633,7 +633,7 @@ void *channel_menu(int *ds, char *channels){
                 exit(EXIT_FAILURE);
             }
 
-            for (int i = 0; i <= num_files + 1; i++) {
+            for (int i = 0; i <= num_files; i++) {
                 printf("\033[1A\033[2K\r");
             }
 
@@ -643,7 +643,7 @@ void *channel_menu(int *ds, char *channels){
     } while (c != '\n' || (index_cursor != 0 && index_cursor != 1 && index_cursor != 2));
     // Sort de la boucle lorsque l'utilisateur appuie sur la touche Entrée et index_cursor == 0
 
-    enableCanonicalMode();
+
 
     for (int i = 0; i <= num_files; i++) {
         printf("\033[1A\033[2K\r");
@@ -651,11 +651,13 @@ void *channel_menu(int *ds, char *channels){
 
     if (index_cursor == 1){
 
+        enableCanonicalMode();
+
         printf("\n\033[35m");
         printf("---------- Entrez un nom de fichier (max %d caracteres) -----------\n", CHANNEL_SIZE - 1);
         //Met le texte en gras
         printf("\033[1m");
-        printf("Saisie : ");
+        printf("Nom de fichier : ");
 
         //Remet le texte en normal
         printf("\033[0m");
@@ -691,7 +693,7 @@ void *channel_menu(int *ds, char *channels){
         printf("---------- Entrez une description (max %d caracteres) -----------\n", MSG_LENGTH - 1);
         //Met le texte en gras
         printf("\033[1m");
-        printf("Saisie : ");
+        printf("Description : ");
 
         //Remet le texte en normal
         printf("\033[0m");
@@ -722,11 +724,7 @@ void *channel_menu(int *ds, char *channels){
             printf("\033[1A\033[2K\r");
         }
         
-    }
-
-
-
-    if (index_cursor == 2){
+    } else if (index_cursor == 2){
         //menu selection suppression
         num_files = num_files - 2;
         index_cursor = 0;
@@ -750,6 +748,9 @@ void *channel_menu(int *ds, char *channels){
                     }
             }
 
+            for (int i = 0; i <= num_files; i++) {
+                printf("\033[1A\033[2K\r");
+            }
             display_channel(1);
 
         } while(c != '\n');
@@ -778,7 +779,10 @@ void *channel_menu(int *ds, char *channels){
         for (int i = 0; i <= num_files + 1; i++) {
             printf("\033[1A\033[2K\r");
         }
-
+        enableCanonicalMode();
+        
+    } else {
+        enableCanonicalMode();
     }
 
 
