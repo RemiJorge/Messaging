@@ -7,6 +7,8 @@ The server is able to handle multiple clients.
 
 You can now send and receive files to and from the server!
 
+You can now join, leave, create and delete channels!
+
 We have improved the graphical interface of the client
 Please enjoy the new features!
 
@@ -69,4 +71,7 @@ Ouvre le menu de selection de fichier afin d'envoyer un fichier de client_files 
 /download
 
 Ouvre le menu de selection de fichier afin de télecharger le fichier choisi depuis le server 
+
+/salon
+Ouvre le menu des salons pour pouvoir, creer, rejoindre, quitter et supprimer des salons 
 
