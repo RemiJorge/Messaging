@@ -395,7 +395,7 @@ int get_free_spot() {
 typedef struct Message Message;
 struct Message {
     // The command
-    // Possible commands : "dm", "who", "fin", "list", "upload", "download"
+    // For possible commands, please read the documentation
     char cmd[CMD_SIZE];
     // The username of the client who will receive the message
     // It can be Server if the message is sent from the server
@@ -490,6 +490,7 @@ void handle_interrupt(int signum){
     int i = 0;
     // Lock the mutex
     pthread_mutex_lock(&mutex_tab_client_connecting);
+    pthread_mutex_lock(&mutex_Threads_id);
     while (i < MAX_CLIENT) {
         if (tab_client_connecting[i] != 0) {
             pthread_cancel(Threads_id[i]);
@@ -499,6 +500,7 @@ void handle_interrupt(int signum){
     }  
     // Unlock the mutex
     pthread_mutex_unlock(&mutex_tab_client_connecting);
+    pthread_mutex_unlock(&mutex_Threads_id);
 
     printf("Socket clients fermes\n");
 
@@ -516,7 +518,7 @@ void handle_interrupt(int signum){
     printf("Nettoyage termine\n");
     printf("Derniers reglages...\n");
 
-    // Wait one second to let the threads finish and get cleaned up
+    // Wait one second
     sleep(1);
     // We free the memory
     free(ended_threads);

@@ -90,7 +90,7 @@ void *channel_thread(void *args);
 typedef struct Message Message;
 struct Message {
     // The command
-    // Possible commands : "dm", "who", "fin", "list", "upload", "download"
+    // For possible commands, please read the documentation
     char cmd[CMD_LENGTH];
     // The username of the client who will receive the message
     // It can be Server if the message is sent from the server
