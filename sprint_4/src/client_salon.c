@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <semaphore.h>
 
+
 // DOCUMENTATION
 // This program acts as a client which connects to a server
 // to talk with other clients
@@ -44,6 +45,9 @@ char color[COLOR_LENGTH]; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur
 
+// The thread ids of the read and write threads
+pthread_t readThread;
+pthread_t writeThread;
 
 // This queue will hold elements of type pthread_t
 typedef struct Queue Queue;
@@ -330,6 +334,7 @@ void *readMessage(void *arg) {
         // Si la cmd est "end" le salon a ete supprime
         if (strcmp(response->cmd, "end") == 0){
             afficher(31, "Le salon a ete supprime\n", NULL);
+            pthread_cancel(writeThread);
             sleep(2);
             close(dS);
             break;
@@ -560,9 +565,7 @@ int main(int argc, char *argv[]) {
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
-    // Initialisation des threads
-    pthread_t readThread;
-    pthread_t writeThread;
+    // Initialisation du thread de cleanup
     pthread_t cleanup_tid;
 
     system("clear"); // Efface l'écran
