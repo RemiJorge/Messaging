@@ -432,6 +432,7 @@ void send_to_all(int client_indice, Message * buffer) {
     pthread_mutex_lock(&mutex_tab_channel);
 
     printf("Channel sent to : %s by client : %d \n", buffer->channel, client_indice + 1);
+    printf("Message sent : %s by client : %d \n", buffer->message, client_indice + 1);
 
     // If the channel is empty, we send to global
     if (strcmp(buffer->channel, "") == 0) {
@@ -1423,16 +1424,21 @@ void * client_thread(void * dS_client_connection) {
         // If the client sends "exit", we exit the channel that he specified in buffer->channel
         if (strcmp(buffer->cmd, "exit") == 0) {
             printf("EXIT detected\n");
-            // We send a message to the other clients in the channel to tell them that this client has exited the channel
-            strcpy(buffer->cmd, "");
-            strcpy(buffer->message, "Je quitte le channel");
-            send_to_all(client_indice, buffer);
-            // We remove the channel from the list of channels of the client
             // Lock the mutex
             pthread_mutex_lock(&mutex_tab_channel);
             remove_element(tab_channel[client_indice], buffer->channel);
             // Unlock the mutex
             pthread_mutex_unlock(&mutex_tab_channel);
+            printf("Le client %d a quitte le channel %s\n", client_indice + 1, buffer->channel);
+            //print his list of channels
+            printf("Liste des channels du client %d: \n", client_indice + 1);
+            print_list(tab_channel[client_indice]);
+            // We send a message to the other clients in the channel to tell them that this client has exited the channel
+            strcpy(buffer->cmd, "");
+            strcpy(buffer->message, "Je quitte le channel");
+            send_to_all(client_indice, buffer);
+            printf("Message sent to all\n");
+            // We remove the channel from the list of channels of the client
             continue;
         }
 

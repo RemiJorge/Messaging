@@ -327,6 +327,21 @@ void *readMessage(void *arg) {
             break;
         }
 
+        // Si la cmd est "end" le salon a ete supprime
+        if (strcmp(response->cmd, "end") == 0){
+            afficher(31, "Le salon a ete supprime\n", NULL);
+            sleep(2);
+            close(dS);
+            break;
+        }
+
+        // Si la cmd est "exit" le client a voulu quitter le salon
+        if (strcmp(response->cmd, "exit") == 0){
+            afficher(31, "Vous avez quitte le salon\n", NULL);
+            sleep(2);
+            close(dS);
+            break;
+        }
 
         print_message(response);
     }
@@ -393,9 +408,25 @@ void *writeMessage(void *arg) {
         strcpy(request->color, color);
 
 
-        // Si l'input est "/fin", ferme la connexion avec le serveur
-        if (strcmp(input, "/fin") == 0){
-            strcpy(request->cmd, "fin");
+        // Si l'input est "/exit", ferme le salon et déconnecte le client
+        if (strcmp(input, "/exit") == 0){
+            strcpy(request->cmd, "exit");
+            print_message(request);
+            // On envoit le message au serveur
+            nb_send = send(dS, request, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                close(dS);
+                exit(EXIT_FAILURE);
+            } else if (nb_send == 0) {
+                // Connection fermée par le client ou le serveur
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                close(dS);
+                break;
+            }
+            // On ferme le socket
+            close(dS);
+            break;
         }
 
         if (strcmp(input, "/who") == 0){
@@ -566,18 +597,19 @@ int main(int argc, char *argv[]) {
 
 
     // Attente de la fin des threads
-    if (pthread_join(readThread, NULL) != 0) {
-        perror("Erreur lors de la fermeture du thread de lecture");
-        close(dS);
-        exit(EXIT_FAILURE);
-    }
     if (pthread_join(writeThread, NULL) != 0) {
         perror("Erreur lors de la fermeture du thread d'ecriture");
         close(dS);
         exit(EXIT_FAILURE);
     }
+    if (pthread_join(readThread, NULL) != 0) {
+        perror("Erreur lors de la fermeture du thread de lecture");
+        close(dS);
+        exit(EXIT_FAILURE);
+    }
 
 
+    sleep(1);
     //Efface les 2 dernières lignes
     printf("\033[2K\033[1A\033[2K\r");
 
