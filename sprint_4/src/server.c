@@ -1031,6 +1031,14 @@ void * channel_thread(void * arg){
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);
 
+                // We message all of the clients in the global channel to tell them that a new channel has been created
+                strcpy(buffer->cmd, "");
+                strcpy(buffer->to, "all");
+                strcpy(buffer->from, "Serveur");
+                strcpy(buffer->message, "Le nouveau channel: %s a ete cree", buffer->channel);
+                strcpy(buffer->channel, "global");
+                send_to_all(-1, buffer);
+
                 // Once the channel is created, the client is no longer in the menu
                 continue_thread = 0;
                 break;
@@ -1065,6 +1073,14 @@ void * channel_thread(void * arg){
                 strcpy(buffer->to, "all");
                 strcpy(buffer->from, "Serveur");
                 strcpy(buffer->message, "Le channel a ete supprime");
+                send_to_all(-1, buffer);
+
+                // We need to send a message to all the clients in the global channel to tell them that a channel has been deleted
+                strcpy(buffer->cmd, "");
+                strcpy(buffer->to, "all");
+                strcpy(buffer->from, "Serveur");
+                strcpy(buffer->message, "Le channel: %s a ete supprime", buffer->channel);
+                strcpy(buffer->channel, "global");
                 send_to_all(-1, buffer);
 
                 // We remove the channel from all the clients
@@ -1401,6 +1417,22 @@ void * client_thread(void * dS_client_connection) {
                 exit(EXIT_FAILURE);
             }
             printf("Thread salon cree\n");
+            continue;
+        }
+
+        // If the client sends "exit", we exit the channel that he specified in buffer->channel
+        if (strcmp(buffer->cmd, "exit") == 0) {
+            printf("EXIT detected\n");
+            // We send a message to the other clients in the channel to tell them that this client has exited the channel
+            strcpy(buffer->cmd, "");
+            strcpy(buffer->message, "Je quitte le channel");
+            send_to_all(client_indice, buffer);
+            // We remove the channel from the list of channels of the client
+            // Lock the mutex
+            pthread_mutex_lock(&mutex_tab_channel);
+            remove_element(tab_channel[client_indice], buffer->channel);
+            // Unlock the mutex
+            pthread_mutex_unlock(&mutex_tab_channel);
             continue;
         }
 
