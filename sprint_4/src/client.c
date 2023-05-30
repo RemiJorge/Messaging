@@ -55,6 +55,10 @@ int socket_channel_address; // socket du channel
 int *socket_server;
 int port_channel; // port du channel
 
+// Thread ids for the read and write threads 
+pthread_t readThread;
+pthread_t writeThread;
+
 
 // This queue will hold elements of type pthread_t
 typedef struct Queue Queue;
@@ -1431,6 +1435,7 @@ void *readMessage(void *arg) {
         if (strcmp(response->cmd, "fin") == 0) {
             // Si le serveur envoie "fin", on ferme la connexion
             afficher(31, "Le serveur a ferme la connexion\n", NULL);
+            pthread_cancel(writeThread);
             close(dS);
             break;
         }
@@ -1977,9 +1982,7 @@ int main(int argc, char *argv[]) {
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
-    // Initialisation des threads
-    pthread_t readThread;
-    pthread_t writeThread;
+    // Initialisation du thread cleanup
     pthread_t cleanup_tid;
 
     system("clear"); // Efface l'écran
