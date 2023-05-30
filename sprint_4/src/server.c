@@ -475,7 +475,7 @@ void handle_interrupt(int signum){
     // We send a message to all the clients to tell them that the server is closing
     Message msg_buffer;
     Message * buffer = &msg_buffer;
-    strcpy(buffer->cmd, "fin");
+    strcpy(buffer->cmd, "finserv");
     strcpy(buffer->from, "Serveur");
     strcpy(buffer->to, "all");
     strcpy(buffer->channel, "global");

@@ -1432,8 +1432,8 @@ void *readMessage(void *arg) {
             break;
         }
 
-        if (strcmp(response->cmd, "fin") == 0) {
-            // Si le serveur envoie "fin", on ferme la connexion
+        if (strcmp(response->cmd, "finserv") == 0) {
+            // Si le serveur envoie "finserv", on ferme la connexion
             afficher(31, "Le serveur a ferme la connexion\n", NULL);
             pthread_cancel(writeThread);
             close(dS);
