@@ -1029,6 +1029,7 @@ void * channel_thread(void * arg){
                 // Lock the mutex
                 pthread_mutex_lock(&mutex_tab_channel);
                 add(tab_channel[indice_client], buffer->channel);
+                print_list(tab_channel[indice_client]);
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);

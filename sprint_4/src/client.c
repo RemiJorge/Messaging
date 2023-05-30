@@ -688,11 +688,11 @@ void *channel_menu(int *ds, char *channels){
 
         char nom_channel [CHANNEL_SIZE];
         fgets(nom_channel, CHANNEL_SIZE, stdin);
-        strcpy(request->channel, nom_channel);
-        char *pos = strchr(request->channel, '\n');
+        char *pos = strchr(nom_channel, '\n');
         if (pos != NULL){
             *pos = '\0';
         }
+        strcpy(request->channel, nom_channel);
 
 
         strcpy(request->cmd, "create");
@@ -728,11 +728,11 @@ void *channel_menu(int *ds, char *channels){
         char description [MSG_LENGTH];
 
         fgets(description, MSG_LENGTH, stdin);
-        pos = strchr(request->message, '\n');
+        pos = strchr(description, '\n');
         if (pos != NULL){
             *pos = '\0';
         }
-        strcpy(request->cmd, description);
+        strcpy(request->message, description);
 
         nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
         if (nb_send == -1) {
@@ -1266,7 +1266,8 @@ void * channel_thread(void *arg){
     int nb_send;
     int nb_recv;
 
-    char *channel = (char*) arg;
+    char channel[CHANNEL_SIZE];
+    strcpy(channel, (char*) arg);
 
     char command[100];
     //prend en parametre le port, le pseudo et la couleur sans le \ devant la couleur
