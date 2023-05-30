@@ -700,8 +700,6 @@ void *channel_menu(int *ds, char *channels){
         //Flush le buffer de stdout
         fflush(stdout);
 
-        // vider le buffer si la description est trop longue
-
 
         char description [MSG_LENGTH];
 
@@ -793,7 +791,7 @@ void *channel_menu(int *ds, char *channels){
 
 
     //envoie exit au serveur pour sortir du menu
-    strcpy(request->cmd, "exit");
+    strcpy(request->cmd, "exitm");
     strcpy(request->from, pseudo);
     strcpy(request->to, "server");
     strcpy(request->channel, "");
