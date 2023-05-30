@@ -599,9 +599,27 @@ void *channel_menu(int *ds, char *channels){
             if (channel_connect[index_cursor - 3] == 1){
                 // Si l'utilisateur est déjà connecté au channel, on le déconnecte
                 channel_connect[index_cursor - 3] = 0;
+                int socket_channel = get_socket(socket_channel_list, channel);
+                strcpy(request->cmd, "exitm");
+                strcpy(request->from, pseudo);
+                strcpy(request->to, "salon");
+                strcpy(request->channel, channel);
+                strcpy(request->message, "");
+                strcpy(request->color, color);
+                nb_send = send(socket_channel, request, BUFFER_SIZE, 0);
+                if (nb_send == -1) {
+                    perror("Erreur lors de l'envoi du message");
+                    close(socket_channel);
+                    exit(EXIT_FAILURE);
+                } else if (nb_send == 0) {
+                    // Connection fermée par le client ou le serveur
+                    afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                    close(socket_channel);
+                    exit(EXIT_FAILURE);
+                }
+
                 strcpy(request->cmd, "disc");
                 // obtenir la socket du channel
-                int socket_channel = get_socket(socket_channel_list, channel);
                 //deconnection du channel
                 if (socket_channel != -1){
                     close(socket_channel);
