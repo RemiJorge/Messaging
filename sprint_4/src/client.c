@@ -1304,6 +1304,14 @@ void * channel_thread(void *arg){
             close(newSocket);
             exit(EXIT_FAILURE);
         } else if (nb_recv == 0) {
+            // Envoyer exit au serveur
+            strcpy(request->cmd, "exit");
+            strcpy(request->from, pseudo);
+            strcpy(request->to, "server");
+            strcpy(request->channel, channel);
+            strcpy(request->message, "");
+            strcpy(request->color, color);
+            nb_send = send(*socket_server, request, BUFFER_SIZE, 0);
             close(newSocket);
             break;
         }
