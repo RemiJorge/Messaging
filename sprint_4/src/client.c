@@ -682,13 +682,13 @@ void *channel_menu(int *ds, char *channels){
         //Flush le buffer de stdout
         fflush(stdout);
 
-        fgets(request->channel, CHANNEL_SIZE, stdin);
+        char nom_channel [CHANNEL_SIZE];
+        fgets(nom_channel, CHANNEL_SIZE, stdin);
+        strcpy(request->channel, nom_channel);
         char *pos = strchr(request->channel, '\n');
         if (pos != NULL){
             *pos = '\0';
         }
-        char nom_channel[CHANNEL_SIZE];
-        strcpy(nom_channel, request->channel);
         strcpy(request->cmd, "create");
         strcpy(request->from, pseudo);
         strcpy(request->to, "server");
