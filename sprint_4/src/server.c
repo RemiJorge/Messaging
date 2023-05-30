@@ -978,6 +978,12 @@ void * channel_thread(void * arg){
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);
+                // Send a message to all the clients in the channel to tell them that the client has joined
+                strcpy(buffer->cmd, "");
+                strcpy(buffer->to, "all");
+                strcpy(buffer->from, "Serveur");
+                strcpy(buffer->message, "Je rejoins le channel");
+                send_to_all(indice_client, buffer);
             }
 
             // If the buffer->cmd is "disc" we remove the client from the channel
@@ -989,6 +995,12 @@ void * channel_thread(void * arg){
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a quitte le channel %s\n", indice_client + 1, buffer->channel);
+                // Send a message to all the clients in the channel to tell them that the client has left
+                strcpy(buffer->cmd, "");
+                strcpy(buffer->to, "all");
+                strcpy(buffer->from, "Serveur");
+                strcpy(buffer->message, "Je quitte le channel");
+                send_to_all(indice_client, buffer);
             }
 
             // If the buffer->cmd is "create" we create a channel
@@ -1055,9 +1067,11 @@ void * channel_thread(void * arg){
             // The client sends us the name of the channel he wants to delete in buffer->channel
             if (strcmp(buffer->cmd, "delete") == 0) {
                 char path[MSG_SIZE]; // The path of the file
+                char channel_to_delete[CHANNEL_SIZE]; // The name of the channel to delete
                 // We concatenate the path of the file
                 strcpy(path, "../src/server_channels/");
                 strcat(path, buffer->channel);
+                strcpy(channel_to_delete, buffer->channel);
 
                 // We delete the file
                 if (remove(path) == 0) {
@@ -1091,7 +1105,7 @@ void * channel_thread(void * arg){
                 pthread_mutex_lock(&mutex_tab_client);
                 while (i < MAX_CLIENT) {
                     if (tab_client[i] != 0) {
-                        remove_element(tab_channel[i], buffer->channel);
+                        remove_element(tab_channel[i], channel_to_delete);
                     }
                     i = i + 1;
                 }
