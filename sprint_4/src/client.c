@@ -654,10 +654,10 @@ void *channel_menu(int *ds, char *channels){
         enableCanonicalMode();
 
         printf("\n\033[35m");
-        printf("---------- Entrez un nom de fichier (max %d caracteres) -----------\n", CHANNEL_SIZE - 1);
+        printf("---------- Entrez un nom du salon (max %d caracteres) -----------\n", CHANNEL_SIZE - 1);
         //Met le texte en gras
         printf("\033[1m");
-        printf("Nom de fichier : ");
+        printf("Nom du salon: ");
 
         //Remet le texte en normal
         printf("\033[0m");
@@ -700,11 +700,17 @@ void *channel_menu(int *ds, char *channels){
         //Flush le buffer de stdout
         fflush(stdout);
 
-        fgets(request->message, MSG_LENGTH, stdin);
+        // vider le buffer si la description est trop longue
+
+
+        char description [MSG_LENGTH];
+
+        fgets(description, MSG_LENGTH, stdin);
         pos = strchr(request->message, '\n');
         if (pos != NULL){
             *pos = '\0';
         }
+        strcpy(request->cmd, description);
 
         nb_send = send(*(int*)ds, request, BUFFER_SIZE, 0);
         if (nb_send == -1) {
