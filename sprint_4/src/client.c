@@ -1235,6 +1235,8 @@ void * download_file(void* param){
 
 void * channel_thread(void *arg){
     //prend en argument le nom du salon
+    int nb_send;
+    int nb_recv;
 
     char *channel = (char*) arg;
 
@@ -1267,7 +1269,7 @@ void * channel_thread(void *arg){
 
     Message request[BUFFER_SIZE];
     while (1){
-        int nb_recv = recv(newSocket, request, BUFFER_SIZE, 0);
+        nb_recv = recv(newSocket, request, BUFFER_SIZE, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception du message");
             close(newSocket);
@@ -1276,9 +1278,25 @@ void * channel_thread(void *arg){
             close(newSocket);
             break;
         }
+
+        if (strcmp(request->cmd, "exit") == 0) {
+            // Si le salon envoie exit on envoie exit au salon puis on ferme la connexion
+            nb_send = send(newSocket, request, BUFFER_SIZE, 0);
+            if (nb_send == -1) {
+                perror("Erreur lors de l'envoi du message");
+                close(newSocket);
+                exit(EXIT_FAILURE);
+            } else if (nb_send == 0) {
+                // Connection fermée par le client ou le serveur
+                afficher(31, "Le serveur a ferme la connexion\n", NULL);
+                close(newSocket);
+                exit(EXIT_FAILURE);
+            }
+            close(newSocket);
+        }
         
         strcpy(request->channel, channel);
-        int nb_send = send(*socket_server, request, BUFFER_SIZE, 0);
+        nb_send = send(*socket_server, request, BUFFER_SIZE, 0);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(*socket_server);
@@ -1290,6 +1308,10 @@ void * channel_thread(void *arg){
             exit(EXIT_FAILURE);
         }
 
+        // on arrete le thread si le client_salon envoit exit
+        if (strcmp(request->cmd, "exit") == 0) {
+            break;
+        }
 
     }
 
