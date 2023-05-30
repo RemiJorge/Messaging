@@ -593,7 +593,7 @@ void *channel_menu(int *ds, char *channels){
         if (c == '\n' && index_cursor != 0 && index_cursor != 1 && index_cursor != 2) {
             char* channel = NULL;
             if (num_files > 0) {
-                channel = channel_array[index_cursor - 2];
+                channel = channel_array[index_cursor - 3];
             }
             // Envoie le nom du channel au serveur
             if (channel_connect[index_cursor - 3] == 1){
