@@ -29,3 +29,6 @@ Voici le guide d'utilisation de la messagerie:
 
 /download
     Ouvre le menu de selection de fichier afin de telecharger le fichier choisi depuis le server 
+    
+/salon
+    Ouvre le menu des salons pour pouvoir, creer, rejoindre, quitter et supprimer des salons 
