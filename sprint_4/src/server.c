@@ -1035,7 +1035,7 @@ void * channel_thread(void * arg){
                 strcpy(buffer->cmd, "");
                 strcpy(buffer->to, "all");
                 strcpy(buffer->from, "Serveur");
-                strcpy(buffer->message, "Le nouveau channel: %s a ete cree", buffer->channel);
+                sprintf(buffer->message, "Le nouveau channel: %s a ete cree", buffer->channel);
                 strcpy(buffer->channel, "global");
                 send_to_all(-1, buffer);
 
@@ -1079,7 +1079,7 @@ void * channel_thread(void * arg){
                 strcpy(buffer->cmd, "");
                 strcpy(buffer->to, "all");
                 strcpy(buffer->from, "Serveur");
-                strcpy(buffer->message, "Le channel: %s a ete supprime", buffer->channel);
+                sprintf(buffer->message, "Le channel %s a ete supprime", buffer->channel);
                 strcpy(buffer->channel, "global");
                 send_to_all(-1, buffer);
 
