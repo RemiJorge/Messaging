@@ -73,5 +73,5 @@ Ouvre le menu de selection de fichier afin d'envoyer un fichier de client_files 
 Ouvre le menu de selection de fichier afin de télecharger le fichier choisi depuis le server 
 
 /salon
-Ouvre le menu des salons pour pouvoir, creer, rejoindre, quitter et supprimer des salons 
+Ouvre le menu des salons pour pouvoir creer, rejoindre, quitter et supprimer des salons 
 
