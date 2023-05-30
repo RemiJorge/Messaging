@@ -44,6 +44,7 @@ char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[
 char color[COLOR_LENGTH]; // couleur attribuée à l'utilisateur
 char *server_ip; // ip du serveur
 int server_port; // port du serveur
+char *channel_nom[CHANNEL_SIZE]; // nom du salon
 
 // The thread ids of the read and write threads
 pthread_t readThread;
@@ -168,7 +169,7 @@ void *afficher(int color, char *msg, void *args){
     printf("---------- Entrez un message (max %d caracteres) -----------\n", MSG_LENGTH - 1);
     //Met le texte en gras
     printf("\033[1m");
-    printf("Saisie : ");
+    printf("%s : ", channel_nom);
     //Remet le texte en normal
     printf("\033[0m");
     //Flush le buffer de stdout
@@ -522,7 +523,7 @@ void handle_sigint(int sig) {
 int main(int argc, char *argv[]) {
     // prend en argument le port du serveur, le pseudo et la couleur du client
 
-    if (argc != 4) {
+    if (argc != 5) {
         printf("Error: You must provide exactly 3 arguments.\n\
                 Usage: ./client <server_port> <pseudo> <color>\n");
         exit(EXIT_FAILURE);
@@ -531,6 +532,7 @@ int main(int argc, char *argv[]) {
     server_port = atoi(argv[1]);
     strcpy(pseudo, argv[2]);
     strcpy(color, argv[3]);
+    strcpy(channel_nom, argv[4]);
 
 
 
@@ -581,7 +583,7 @@ int main(int argc, char *argv[]) {
     pthread_t cleanup_tid;
 
     system("clear"); // Efface l'écran
-    printf("Bienvenue sur la messagerie instantanee !\n");
+    printf("Bienvenue sur le salon %s !\n", channel_nom);
     printf("Vous etes connecte au serveur %s:%s en tant que %s.\n\n", server_ip, argv[1], pseudo);
 
     pthread_mutex_init(&mutex_ended_threads, NULL);
