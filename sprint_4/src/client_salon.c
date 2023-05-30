@@ -348,6 +348,15 @@ void *readMessage(void *arg) {
             break;
         }
 
+        // Si la cmd est "exitm" le client quitte le salon depuis le menu
+        if (strcmp(response->cmd, "exitm") == 0){
+            afficher(31, "Vous avez quitte le salon depuis le menu\n", NULL);
+            pthread_cancel(writeThread);
+            sleep(2);
+            close(dS);
+            break;
+        }
+
         print_message(response);
     }
 
@@ -612,7 +621,6 @@ int main(int argc, char *argv[]) {
     }
 
 
-    sleep(1);
     //Efface les 2 dernières lignes
     printf("\033[2K\033[1A\033[2K\r");
 
