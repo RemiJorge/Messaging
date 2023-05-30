@@ -432,13 +432,13 @@ void send_to_all(int client_indice, Message * buffer) {
     pthread_mutex_lock(&mutex_tab_channel);
 
     printf("Channel sent to : %s by client : %d \n", buffer->channel, client_indice + 1);
-    printf("Message sent : %s by client : %d \n", buffer->message, client_indice + 1);
+    printf("Message sent : %s by client : %d \n\n", buffer->message, client_indice + 1);
 
     // If the channel is empty, we send to global
     if (strcmp(buffer->channel, "") == 0) {
         strcpy(buffer->channel, "global");
         // This shouldn't happen, so we print a warning
-        printf("Warning: client has forgotten channel");
+        printf("Warning: client has forgotten channel\n");
     }
 
     while( i < MAX_CLIENT){
@@ -957,8 +957,8 @@ void * channel_thread(void * arg){
                 break;
             }
             
-            // If the buffer->cmd is "exit" we stop the thread
-            if (strcmp(buffer->cmd, "exit") == 0) {
+            // If the buffer->cmd is "exitm" we stop the thread
+            if (strcmp(buffer->cmd, "exitm") == 0) {
                 printf("Le client a quitte le menu channel\n");
                 continue_thread = 0;
                 break;
@@ -1061,13 +1061,6 @@ void * channel_thread(void * arg){
                     printf("Erreur lors de la suppression du channel %s\n", buffer->channel);
                 }
 
-                // We remove the client from the channel
-                // Lock the mutex
-                pthread_mutex_lock(&mutex_tab_channel);
-                remove_element(tab_channel[indice_client], buffer->channel);
-                // Unlock the mutex
-                pthread_mutex_unlock(&mutex_tab_channel);
-                printf("Le client %d a quitte le channel %s\n", indice_client + 1, buffer->channel);
 
                 // We need to send a message to all the clients in the channel to tell them that the channel has been deleted
                 strcpy(buffer->cmd, "end");
@@ -1076,6 +1069,7 @@ void * channel_thread(void * arg){
                 strcpy(buffer->message, "Le channel a ete supprime");
                 send_to_all(-1, buffer);
 
+                printf("Le client %d a supp le channel %s\n", indice_client + 1, buffer->channel);
                 // We need to send a message to all the clients in the global channel to tell them that a channel has been deleted
                 strcpy(buffer->cmd, "");
                 strcpy(buffer->to, "all");
