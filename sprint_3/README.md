@@ -1,5 +1,7 @@
 # Message Relay Server Between Two Clients
 
+PLEASE READ THE DOCUMENTATION FOR MORE INFORMATION
+
 This is a simple messaging server written in C that relays text messages
 between multiple clients using the TCP protocol. The server and the clients are multi-threaded.
 
