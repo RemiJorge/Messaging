@@ -31,60 +31,67 @@
             VARIABLES GLOBALES
 ********************************************/
 
-#define PSEUDO_LENGTH 10 // taille maximal du pseudo
-#define CMD_LENGTH 10 // taille maximal de la commande
-#define MSG_LENGTH 960 // taille maximal du message
-#define COLOR_LENGTH 10 // taille de la couleur
-#define CHANNEL_SIZE 10 // Size of the channel name
-#define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH + CHANNEL_SIZE// taille maximal du message envoyé au serveur
-#define FILES_DIRECTORY "../src/client_files/" // répertoire courant
-#define PORT_CHANNEL_START 9537 // port pour les channels
+// taille maximal du pseudo
+#define PSEUDO_LENGTH 10 
+// taille maximal de la commande
+#define CMD_LENGTH 10
+// taille maximal du message
+#define MSG_LENGTH 960
+// taille de la couleur
+#define COLOR_LENGTH 10
+// Size of the channel name
+#define CHANNEL_SIZE 10
+// taille maximal du message envoyé au serveur
+#define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH + CHANNEL_SIZE
+// répertoire courant
+#define FILES_DIRECTORY "../src/client_files/"
+// port pour les channels
+#define PORT_CHANNEL_START 9537
 
-char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
+
+// pseudo de l'utilisateur
+char pseudo[PSEUDO_LENGTH]; 
+// tableau des couleurs
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
-char *color; // couleur attribuée à l'utilisateur
-char *server_ip; // ip du serveur
-int server_port; // port du serveur  
-int num_files; // nombre de fichiers dans le menu, 0 signifie que le menu n'est pas ouvert
-int menu = 0; // 0 si le menu n'est pas ouvert, 1 si le menu est ouvert pour l'upload, 2 si le menu est ouvert pour le download, 3 si le menu est ouvert pour le choix du channel, 4 suppression du channel
-int index_cursor = 0; // index_cursor du fichier sélectionné dans le menu de téléchargement
+// couleur attribuée à l'utilisateur
+char *color;
+// ip du serveur
+char *server_ip;
+// port du serveur  
+int server_port;
+// nombre de fichiers dans le menu, 0 signifie que le menu n'est pas ouvert
+int num_files;
+// 0 si le menu n'est pas ouvert, 1 si le menu est ouvert pour l'upload, 2 si le menu est ouvert pour le download, 3 si le menu est ouvert pour le choix du channel, 4 suppression du channel
+int menu = 0;
+// index_cursor du fichier sélectionné dans le menu de téléchargement
+int index_cursor = 0;
+// tableau contenant les noms des fichiers
 char *files_array[100];
-char *channel_array[200]; // tableau contenant les noms des channels
-int channel_connect[200]; // tableau contenant 1 si l'utilisateur est connecté au channel, 0 sinon
-int socket_channel_address; // socket du channel
+// tableau contenant les noms des channels
+char *channel_array[200];
+// tableau contenant 1 si l'utilisateur est connecté au channel, 0 sinon
+int channel_connect[200];
+// socket du channel
+int socket_channel_address;
+// socket du serveur
 int *socket_server;
-int port_channel; // port du channel
+// port du channel
+int port_channel;
 
 // Thread ids for the read and write threads 
 pthread_t readThread;
 pthread_t writeThread;
 
 
-// This queue will hold elements of type pthread_t
-typedef struct Queue Queue;
-typedef struct Element Element;
-
-struct Element{
-    pthread_t number;
-    Element *next;
-};
 
 
-struct Queue{
-    Element * premier;
-    int count;
-};
-// A semaphore to indicate when a thread has ended
-sem_t thread_end;
-// A shared queue to store the index of the clients who have disconnected
-Queue * ended_threads;
-// Mutex to protect the ended_threads queue
-pthread_mutex_t mutex_ended_threads;
-
-// Signatures des fonctions
+// Signatures des fonctions de quelques fonction utile
 void *afficher(int color, char *msg, void *args);
 void *channel_thread(void *args);
 
+/****************************************************
+            STRUCTURE DES MESSAGES
+*****************************************************/
 
 // Struct for the messages
 typedef struct Message Message;
@@ -108,7 +115,7 @@ struct Message {
 
 
 /****************************************************
-                List Type Def and Functions
+            LISTE CHAINÉE DES CHANNELS
 *****************************************************/
 
 // This list will hold elements of type string and int
@@ -236,9 +243,30 @@ int get_socket(List *l, char *name) {
 List *socket_channel_list;
 
 
-/*****************************************************
-              Queue Type Def and Functions
-******************************************************/
+/*******************************************
+            FILES DES THREADS
+********************************************/
+
+// This queue will hold elements of type pthread_t
+typedef struct Queue Queue;
+typedef struct Element Element;
+
+struct Element{
+    pthread_t number;
+    Element *next;
+};
+
+
+struct Queue{
+    Element * premier;
+    int count;
+};
+// A semaphore to indicate when a thread has ended
+sem_t thread_end;
+// A shared queue to store the index of the clients who have disconnected
+Queue * ended_threads;
+// Mutex to protect the ended_threads queue
+pthread_mutex_t mutex_ended_threads;
 
 // Creates a new queue
 Queue * new_queue(){
@@ -282,10 +310,12 @@ pthread_t dequeue(Queue * q){
 
 
 /*******************************************
-            FONCTIONS UTILITAIRES
+            FONCTIONS DES MENUS
 ********************************************/
 
 // Fonction pour désactiver le mode canonique du terminal
+// Le mode canonique permet de lire les entrées clavier ligne par ligne
+// Il faut le désactiver pour pouvoir lire les entrées clavier caractère par caractère
 void disableCanonicalMode() {
     struct termios term;
     tcgetattr(STDIN_FILENO, &term);
@@ -843,6 +873,19 @@ void *channel_menu(int *ds, char *channels){
 }
 
 
+long get_file_size(FILE *file) {
+    long size;
+    fseek(file, 0, SEEK_END);  // Déplace le curseur à la fin du fichier
+    size = ftell(file);        // Récupère la position actuelle du curseur (qui est la taille du fichier)
+    rewind(file);              // Remet le curseur au début du fichier
+    return size;
+}
+
+
+/****************************************************
+                FONCTIONS D'AFFICHAGE
+*****************************************************/
+
 void *afficher(int color, char *msg, void *args){
     /*  Fonction formatant l'affichage
         color : couleur du texte
@@ -982,17 +1025,10 @@ void print_dm_envoye(Message *output){
     afficher(32, msg, NULL);
 }
 
+
 /*******************************************
             THREADS DES FICHIERS
 ********************************************/
-
-long get_file_size(FILE *file) {
-    long size;
-    fseek(file, 0, SEEK_END);  // Déplace le curseur à la fin du fichier
-    size = ftell(file);        // Récupère la position actuelle du curseur (qui est la taille du fichier)
-    rewind(file);              // Remet le curseur au début du fichier
-    return size;
-}
 
 /***************** UPLOAD ******************/
 
@@ -1404,7 +1440,7 @@ void * cleanup(void * arg) {
 
 
 /*******************************************
-            FONCTIONS DE THREADS
+    THREADS POUR LA CONNECION SERVEUR   
 ********************************************/
 
 /************** LECTURE ****************/
@@ -1797,6 +1833,7 @@ void handle_sigint(int sig) {
 }
 
 
+
 /*******************************************
                 MAIN
 ********************************************/
@@ -1970,6 +2007,7 @@ int main(int argc, char *argv[]) {
         }  
 
     }while (bind_result != 0 && port_channel < 65535);
+    
     // Ecoute sur la socket
     if (listen(socket_channel_address, 3) < 0) {
         perror("listen failed");
