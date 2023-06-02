@@ -14,20 +14,10 @@
 
 
 // DOCUMENTATION
-// This program acts as a client which connects to a server
-// to talk with other clients
-// It uses the TCP protocol
-// It takes two arguments, the server ip and the server port
-// The client needs to provide a unique username to chat with other clients
+// This program is will execute when a client joins a channel
+// Please read the documentation for more information   
 
-// Please read the README.md file for more information
-// including the different commands that can be used
 
-// You can use gcc to compile this program:
-// gcc -o client client.c
-
-// Use : ./client <server_ip> <server_port>
-//
 /*******************************************
             VARIABLES GLOBALES
 ********************************************/
@@ -50,29 +40,8 @@ char channel_nom[CHANNEL_SIZE]; // nom du salon
 pthread_t readThread;
 pthread_t writeThread;
 
-// This queue will hold elements of type pthread_t
-typedef struct Queue Queue;
-typedef struct Element Element;
-
-struct Element{
-    pthread_t number;
-    Element *next;
-};
 
 
-struct Queue{
-    Element * premier;
-    int count;
-};
-// A semaphore to indicate when a thread has ended
-sem_t thread_end;
-// A shared queue to store the index of the clients who have disconnected
-Queue * ended_threads;
-// Mutex to protect the ended_threads queue
-pthread_mutex_t mutex_ended_threads;
-
-
-void *afficher(int color, char *msg, void *args);
 
 
 // Struct for the messages
@@ -95,51 +64,6 @@ struct Message {
     char color[COLOR_LENGTH];
 };
 
-
-
-/*****************************************************
-              Queue Type Def and Functions
-******************************************************/
-
-// Creates a new queue
-Queue * new_queue(){
-    Queue * q = malloc(sizeof(Queue));
-    q->premier = NULL;
-    q->count = 0;
-    return q;
-}
-
-// Adds an element to the queue
-void enqueue(Queue * q, pthread_t number){
-    Element * e = malloc(sizeof(Element));
-    e->number = number;
-    e->next = NULL;
-    if(q->premier == NULL){
-        q->premier = e;
-    }else{
-        Element * current = q->premier;
-        while(current->next != NULL){
-            current = current->next;
-        }
-        current->next = e;
-    }
-    q->count++;
-}
-
-// Removes the first element of the queue and returns it
-// If the queue is empty, returns -1
-pthread_t dequeue(Queue * q){
-    if(q->premier == NULL){
-        return -1;
-    }else{
-        Element * e = q->premier;
-        q->premier = e->next;
-        pthread_t number = e->number;
-        free(e);
-        q->count--;
-        return number;
-    }
-}
 
 
 /*******************************************
@@ -258,45 +182,6 @@ void print_dm_envoye(Message *output){
     sprintf(msg, "%s%s%s%s%s%s%s%s", color, timeString, "mp envoye a ", output->to, " : ", "\033[0m", output->message, "\n\0");
     afficher(32, msg, NULL);
 }
-
-
-/***************************************
-        Thread Cleanup Handler
-****************************************/
-
-// A function for a thread that will cleanup ended client threads
-// The thread that cleans up sleeps until a client thread ends
-// It checks a semaphore to see if a client thread has ended
-// If a client thread has ended, it joins the thread and cleans up the thread
-// It gets the if of the thread that ended from the shared queue of ended threads
-
-void * cleanup(void * arg) {
-
-    while (1) {
-        sem_wait(&thread_end);
-        pthread_t thread_id;
-        // We get the id of the thread that ended from the shared queue of ended threads
-        // Lock the mutex
-        pthread_mutex_lock(&mutex_ended_threads);
-        thread_id = dequeue(ended_threads);
-        // Unlock the mutex
-        pthread_mutex_unlock(&mutex_ended_threads);
-        if (thread_id == -1) {
-            perror("ERREUR CRITIQUE DEQUEUE");
-            exit(EXIT_FAILURE);
-        }
-        // We join the thread        
-        if (pthread_join(thread_id, NULL) == -1){
-            perror("Erreur lors du join d'un thread");
-        }
-        else{
-            //printf("Thread %ld joined\n", thread_id);
-        }
-    }
-
-    pthread_exit(0);
-}
-
 
 
 
@@ -579,18 +464,11 @@ int main(int argc, char *argv[]) {
     // Gestion du signal SIGINT (Ctrl+C)
     signal(SIGINT, handle_sigint);
 
-    // Initialisation du thread de cleanup
-    pthread_t cleanup_tid;
 
     system("clear"); // Efface l'écran
     printf("Bienvenue sur le salon %s !\n", channel_nom);
     printf("Vous etes connecte au serveur %s:%s en tant que %s.\n\n", server_ip, argv[1], pseudo);
 
-    pthread_mutex_init(&mutex_ended_threads, NULL);
-    sem_init(&thread_end, 0, 0);
-
-    // Initialise the shared queue of disconnected clients
-    ended_threads = new_queue();
 
     // Lancement du thread de lecture
     if (pthread_create(&readThread, NULL, readMessage, &dS) != 0) {
@@ -604,12 +482,6 @@ int main(int argc, char *argv[]) {
         close(dS);
         exit(EXIT_FAILURE);
     }
-    // Launch the thread that will clean up client threads
-    if (pthread_create(&cleanup_tid, NULL, cleanup, NULL) == -1) {
-        perror("Erreur lors de la creation du thread");
-        exit(EXIT_FAILURE);
-    }
-    //printf("Thread de cleanup cree\n");
 
 
 
