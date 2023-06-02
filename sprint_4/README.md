@@ -1,13 +1,15 @@
 # Message Relay Server Between Two Clients
 
-PLEASE READ THE DOCUMENTATION FOR MORE INFORMATION
+**VERY VERY IMPORTANT**
+**PLEASE READ THE USER GUIDE TO LEARN HOW TO USE THE MESSAGING SYSTEM**
+**PLEASE READ THE DOCUMENTATION FOR MORE INFORMATION**
 
 This is a simple messaging server written in C that relays text messages
 between multiple clients using the TCP protocol. The server and the clients are multi-threaded.
 
 The server is able to handle multiple clients.
 
-You can now send and receive files to and from the server!
+You can send and receive files to and from the server!
 
 You can now join, leave, create and delete channels!
 
@@ -77,3 +79,44 @@ Ouvre le menu de selection de fichier afin de télecharger le fichier choisi dep
 /salon
 Ouvre le menu des salons pour pouvoir creer, rejoindre, quitter et supprimer des salons 
 
+## File Architecture
+
+This is how the files are organized in this repository
+.
+├── bin
+│   ├── client
+│   ├── client_salon
+│   └── server
+├── compil.sh
+├── README.md
+└── src
+    ├── client.c
+    ├── client_files
+    │   ├── alex.txt
+    │   ├── document.txt
+    │   ├── elgreco.jpg
+    │   ├── image.jpg
+    │   ├── linux.png
+    │   ├── Nature_.jpg
+    │   └── nyan.gif
+    ├── client_salon.c
+    ├── manuel.txt
+    ├── server.c
+    ├── server_channels
+    │   ├── alex
+    │   ├── cours
+    │   ├── game
+    │   ├── music
+    │   ├── poke
+    │   ├── school
+    │   └── swift
+    └── server_files
+        ├── alex.txt
+        ├── document.txt
+        ├── elgreco.jpg
+        ├── image.jpg
+        ├── linux.png
+        ├── Nature_.jpg
+        └── nyan.gif
+
+5 directories, 30 files
