@@ -471,7 +471,7 @@ void send_to_all(int client_indice, Message * buffer) {
 // and it will close the sockets, destroy the mutexes and semaphores, and free the memory
 
 void handle_interrupt(int signum){
-    printf("Le serveur va fermer\n");
+    printf("\nLe serveur va fermer\n");
     // We send a message to all the clients to tell them that the server is closing
     Message msg_buffer;
     Message * buffer = &msg_buffer;
@@ -862,8 +862,6 @@ void * channel_thread(void * arg){
 
     int indice_client = *(int *) arg; // The indice of the client in the tab_client array
 
-    printf("Channel thread for client: %d\n", indice_client + 1);
-
     int nb_recv; // The number of bytes received
     int nb_send; // The number of bytes sent
     Message msg_buffer; // The buffer for the messages
@@ -928,8 +926,6 @@ void * channel_thread(void * arg){
 
         // Close the directory
         closedir(directory);
-
-        printf("Le message envoye est: %s\n", buffer->message);
 
         // We send the list of channels
         strcpy(buffer->cmd, "salon");
@@ -1045,7 +1041,6 @@ void * channel_thread(void * arg){
                 // Lock the mutex
                 pthread_mutex_lock(&mutex_tab_channel);
                 add(tab_channel[indice_client], buffer->channel);
-                print_list(tab_channel[indice_client]);
                 // Unlock the mutex
                 pthread_mutex_unlock(&mutex_tab_channel);
                 printf("Le client %d a rejoint le channel %s\n", indice_client + 1, buffer->channel);
@@ -1089,7 +1084,7 @@ void * channel_thread(void * arg){
                 strcpy(buffer->message, "Le channel a ete supprime");
                 send_to_all(-1, buffer);
 
-                printf("Le client %d a supp le channel %s\n", indice_client + 1, buffer->channel);
+                printf("Le client %d a supprimer le channel %s\n", indice_client + 1, buffer->channel);
                 // We need to send a message to all the clients in the global channel to tell them that a channel has been deleted
                 strcpy(buffer->cmd, "");
                 strcpy(buffer->to, "all");
@@ -1284,7 +1279,7 @@ void * client_thread(void * dS_client_connection) {
             break;
         }
 
-        printf("Message recu: %s du client: %d \n", buffer->message, client_indice + 1);
+        printf("Message received: %s by client: %d \n", buffer->message, client_indice + 1);
 
         // If the client sends "fin", we break and close his socket
         if (strcmp(buffer->cmd, "fin") == 0) {
@@ -1421,7 +1416,6 @@ void * client_thread(void * dS_client_connection) {
         // And let him connect and disconnect freely
         if (strcmp(buffer->cmd, "salon") == 0) {
             printf("SALON detected\n");
-            printf("client indice before: %d\n", client_indice + 1);
 
             // We launch a thread to send the list of channels
             pthread_t thread_salon;
@@ -1444,14 +1438,10 @@ void * client_thread(void * dS_client_connection) {
             // Unlock the mutex
             pthread_mutex_unlock(&mutex_tab_channel);
             printf("Le client %d a quitte le channel %s\n", client_indice + 1, buffer->channel);
-            //print his list of channels
-            printf("Liste des channels du client %d: \n", client_indice + 1);
-            print_list(tab_channel[client_indice]);
             // We send a message to the other clients in the channel to tell them that this client has exited the channel
             strcpy(buffer->cmd, "");
             strcpy(buffer->message, "Je quitte le channel");
             send_to_all(client_indice, buffer);
-            printf("Message sent to all\n");
             // We remove the channel from the list of channels of the client
             continue;
         }

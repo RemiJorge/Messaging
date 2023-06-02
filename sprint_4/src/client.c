@@ -38,7 +38,7 @@
 #define CHANNEL_SIZE 10 // Size of the channel name
 #define BUFFER_SIZE PSEUDO_LENGTH + PSEUDO_LENGTH + CMD_LENGTH + MSG_LENGTH + COLOR_LENGTH + CHANNEL_SIZE// taille maximal du message envoyé au serveur
 #define FILES_DIRECTORY "../src/client_files/" // répertoire courant
-#define PORT_CHANNEL_START 8080 // port pour les channels
+#define PORT_CHANNEL_START 9537 // port pour les channels
 
 char pseudo[PSEUDO_LENGTH]; // pseudo de l'utilisateur
 char *array_color [11] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"};
