@@ -1829,7 +1829,7 @@ void handle_sigint(int sig) {
     // Fonction qui gère le signal SIGINT (Ctrl+C)
     // On a fait le choix de desactiver le Ctrl+C pour eviter que le client ne quitte la discussion sans le vouloir
     // On aurait pu aussi envoyer un message au serveur pour le prevenir que le client quitte la discussion
-    afficher(31, "Pour quitter, veuillez saisir le mot 'fin'.\n", NULL);
+    afficher(31, "Pour quitter, veuillez saisir '/fin'.\n", NULL);
 }
 
 

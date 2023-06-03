@@ -19,6 +19,8 @@ To compile the server and the client, run the following command:
 
 ## IMPORTANT:
 
+**BEFORE EXECUTION, MAKE SURE YOU ARE IN THE BIN FOLDER**
+
 Launch the server first.
 
 => ./server port

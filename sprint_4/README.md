@@ -25,6 +25,8 @@ To compile the server and the client, run the following command:
 
 ## IMPORTANT:
 
+**BEFORE EXECUTION, MAKE SURE YOU ARE IN THE BIN FOLDER**
+
 Launch the server first.
 
 => ./server port
@@ -80,6 +82,10 @@ Ouvre le menu de selection de fichier afin de télecharger le fichier choisi dep
 
 /salon
 Ouvre le menu des salons pour pouvoir creer, rejoindre, quitter et supprimer des salons 
+
+/exit
+Commande a taper dans un salon. Permet de quitter le salon. La fenetre du salon se fermera automatiquement.
+
 
 ## File Architecture
 
