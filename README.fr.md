@@ -21,7 +21,7 @@ Il s'agit d'un serveur et d'un client multithreadés pour une application de mes
 [Documentation](#documentation) •
 [Contributions](#contributions)
 
-**Veuillez lire attentivement la [Documentation](DocumenationFinale.pdf) fournie ainsi que le [Manuel Utilisateur](ManuelUtilisateur.pdf).**
+**Veuillez lire attentivement la [Documentation](Documentation.pdf) fournie ainsi que le [Manuel Utilisateur](Guide_Utilisation.pdf).**
 </div>
 
 
@@ -134,9 +134,9 @@ Voici la liste des commandes disponibles pour les utilisateurs :
 # Documentation
 <sup>[(Retour en haut)](#table-des-matières)</sup>
 
-Une documentation complète est fournie dans le fichier [Documentation](DocumenationFinale.pdf).
+Une documentation complète est fournie dans le fichier [Documentation](Documentation.pdf).
 
-Un manuel utilisateur est également fourni dans le fichier [Manuel Utilisateur](ManuelUtilisateur.pdf).
+Un manuel utilisateur est également fourni dans le fichier [Manuel Utilisateur](Guide_Utilisation.pdf).
 
 # Captures d'écran
 <sup>[(Retour en haut)](#table-des-matières)</sup>

@@ -21,7 +21,7 @@ This is a multithreaded CLI server and client for a messaging app written in C. 
 [Documentation](#documentation) •
 [Contributions](#contributions)
 
-**Please read the the thourough [Documentation](DocumenationFinale.pdf) provided and the [User Manual](ManuelUtilisateur.pdf).**
+**Please read the the thourough [Documentation](Documentation.pdf) provided and the [User Manual](Guide_Utilisation.pdf).**
 </div>
 
 
@@ -136,9 +136,9 @@ Here is the list of available commands for users:
 # Documentation
 <sup>[(Back to top)](#table-of-contents)</sup>
 
-A thourough documentation is provided in the [Documentation](DocumenationFinale.pdf) file.
+A thourough documentation is provided in the [Documentation](Documentation.pdf) file.
 
-A User Manual is also provided in the [User Manual](ManuelUtilisateur.pdf) file.
+A User Manual is also provided in the [User Manual](Guide_Utilisation.pdf) file.
 
 # Demo Screenshots
 <sup>[(Back to top)](#table-of-contents)</sup>
