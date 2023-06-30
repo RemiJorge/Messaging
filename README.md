@@ -42,8 +42,8 @@ Everything is done securely, in real time, and in parallel thanks to multithread
   - [Execution](#execution)
   - [Commands](#commands)
 - [Documentation](#documentation)
-- [Demo Screenshots](#demo-screenshots)
-- [Folder structure](#folder-structure)
+  - [Demo Screenshots](#demo-screenshots)
+  - [Folder structure](#folder-structure)
 - [Contributions](#contributions)
   - [Authors](#authors)
   - [Version control](#version-control)
@@ -140,7 +140,7 @@ A thourough documentation is provided in the [Documentation](Documentation.pdf) 
 
 A User Manual is also provided in the [User Manual](Guide_Utilisation.pdf) file.
 
-# Demo Screenshots
+## Demo Screenshots
 <sup>[(Back to top)](#table-of-contents)</sup>
 
 A user with multiple channels open:
@@ -149,7 +149,7 @@ A user with multiple channels open:
 A user downloading a file from the server:
 ![demo screenshot](images/download.png "download")
 
-# Folder structure
+## Folder structure
 <sup>[(Back to top)](#table-of-contents)</sup>
 
 The project is structured as follows:

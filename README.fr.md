@@ -42,8 +42,8 @@ Tout est réalisé de manière sécurisée, en temps réel et en parallèle grâ
   - [Exécution](#exécution)
   - [Commandes](#commandes)
 - [Documentation](#documentation)
-- [Captures d'écran](#captures-décran)
-- [Structure du projet](#structure-du-projet)
+  - [Captures d'écran](#captures-décran)
+  - [Structure du projet](#structure-du-projet)
 - [Contributions](#contributions)
   - [Auteurs](#auteurs)
   - [Contrôle des versions](#contrôle-des-versions)
@@ -138,7 +138,7 @@ Une documentation complète est fournie dans le fichier [Documentation](Document
 
 Un manuel utilisateur est également fourni dans le fichier [Manuel Utilisateur](Guide_Utilisation.pdf).
 
-# Captures d'écran
+## Captures d'écran
 <sup>[(Retour en haut)](#table-des-matières)</sup>
 
 Un utilisateur avec plusieurs salons ouverts :
@@ -147,7 +147,7 @@ Un utilisateur avec plusieurs salons ouverts :
 Un utilisateur téléchargeant un fichier depuis le serveur :
 ![Capture d'écran de démonstration](images/download.png "download")
 
-# Structure du projet
+## Structure du projet
 <sup>[(Retour en haut)](#table-des-matières)</sup>
 
 Voici la structure du projet :
