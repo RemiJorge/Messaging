@@ -90,6 +90,7 @@ Commande a taper dans un salon. Permet de quitter le salon. La fenetre du salon 
 ## File Architecture
 
 This is how the files are organized in this repository
+```bash
 .
 ├── bin
 │   ├── client
@@ -128,3 +129,4 @@ This is how the files are organized in this repository
         └── nyan.gif
 
 5 directories, 30 files
+```
